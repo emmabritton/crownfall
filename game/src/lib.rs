@@ -49,15 +49,11 @@ pub enum TurnResult {
         from: Cell,
         to: Cell,
     },
-    SpyAttack {
-        move_from: Cell,
-        move_to: Cell,
+    Capture {
+        last_move_from: Cell,
+        last_move_to: Cell,
         removed: Cell,
-    },
-    KnightAttack {
-        move_from: Cell,
-        move_to: Cell,
-        removed: Cell,
+        second_attacker: Cell,
     },
     Victory {
         surrounded_crown: Cell,

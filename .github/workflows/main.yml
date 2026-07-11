@@ -63,7 +63,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
-          rename client.exe crownfall.exe
+          ren client.exe crownfall.exe
           strip crownfall.exe
           7z a ../../../${{ matrix.name }} crownfall.exe
           cd -
@@ -71,7 +71,7 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
-          rename client crownfall
+          mv client crownfall
           strip crownfall
           tar cvf ../../../${{ matrix.name }} crownfall
           cd -

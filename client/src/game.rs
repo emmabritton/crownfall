@@ -2,7 +2,7 @@ use std::fmt::format;
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::{DOMAIN, HEIGHT, SceneName, SceneResult, WIDTH};
 use common::{GamePollResponse, WebGame, URL_PLAY, PerformActionRequest, PerformActionResponse};
-use game::{Cell, GameState, PlayState, PlayerAction, PlayerKind};
+use game::{Cell, GameState, PlayState, PlayerAction, PlayerKind, TurnResult};
 use pixels_graphics_lib::MouseData;
 use pixels_graphics_lib::buffer_graphics_lib::Graphics;
 use pixels_graphics_lib::prelude::{coord, Coord, FxHashSet, KeyCode, MouseButton, PixelFont, Positioning, Scene, SceneUpdateResult, TextPos, Timer, Timing, Window, WrappingStrategy, BLACK, RED, WHITE, IndexedImage};
@@ -25,7 +25,8 @@ pub struct GameScene {
     timer: Timer,
     highlight: Vec<Cell>,
     highlight_origin: Cell,
-    highlight_image: IndexedImage
+    highlight_image: IndexedImage,
+    last_move: Option<TurnResult>,
 }
 
 impl GameScene {
@@ -37,6 +38,7 @@ impl GameScene {
             client,
             state,
             is_white,
+            last_move: None,
             piece_renderer: PieceRenderer::new(),
             board_renderer: BoardRenderer::new(BOARD_POS),
             timer: Timer::new(1.0),
@@ -62,7 +64,7 @@ impl Scene<SceneResult, SceneName> for GameScene {
                         graphics.draw_indexed_image(xy, image);
                     }
                 }
-                draw_status(web_game, self.is_white, graphics);
+                draw_status(web_game, self.is_white, graphics, &self.last_move);
                 for highlight in &self.highlight {
                     let pos = (coord!(highlight.to_coord()) * CELL_SIZE) + BOARD_POS;
                     graphics.draw_indexed_image(pos, &self.highlight_image);
@@ -120,6 +122,7 @@ impl Scene<SceneResult, SceneName> for GameScene {
                                             Ok(resp) => match resp.json::<PerformActionResponse>() {
                                                 Ok(response) => match response {
                                                     PerformActionResponse::Success { game, result } => {
+                                                        self.last_move = result;
                                                         get_game(&self.client, &game.id)
                                                     }
                                                     PerformActionResponse::Error(err) => GameClientState::Error(format!("{err:?}")),
@@ -167,7 +170,7 @@ impl Scene<SceneResult, SceneName> for GameScene {
     }
 }
 
-fn draw_status(web_game: &WebGame, is_white: bool, graphics: &mut Graphics) {
+fn draw_status(web_game: &WebGame, is_white: bool, graphics: &mut Graphics, last_move: &Option<TurnResult>) {
     let pos = coord!(300, 16);
     graphics.draw_text(
         "Crownfall",
@@ -201,6 +204,21 @@ fn draw_status(web_game: &WebGame, is_white: bool, graphics: &mut Graphics) {
         TextPos::px(pos + (0, 40)),
         (WHITE, PixelFont::Standard6x7),
     );
+    if let Some(result) = last_move {
+        graphics.draw_text(
+            &last_move_text(result),
+            TextPos::px(pos + (0, 40)),
+            (WHITE, PixelFont::Standard6x7),
+        );
+    }
+}
+
+fn last_move_text(turn_result: &TurnResult) -> String{
+    match turn_result {
+        TurnResult::PieceMove { from, to } => format!("Moved from {:?} to {:?}", from.to_coord(), to.to_coord()),
+        TurnResult::Capture { last_move_from, last_move_to, removed, second_attacker } => format!("Captured piece at {:?}", removed.to_coord()),
+        TurnResult::Victory { surrounded_crown } => format!("Captured crown at {:?}", surrounded_crown.to_coord())
+    }
 }
 
 fn state_to_text(state: &GameState, white_name: &str, black_name: &str) -> String {

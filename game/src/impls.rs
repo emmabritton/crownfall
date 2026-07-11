@@ -239,14 +239,14 @@ impl BoardState {
             })
     }
 
-    fn check_piece_capture(
+    fn check_piece_captures(
         &self,
         to: Cell,
         attacker: PlayerKind,
-    ) -> Option<(Cell, CaptureKind, (Cell, Cell))> {
+    ) -> Vec<(Cell, CaptureKind, (Cell, Cell))> {
         Self::orthogonal_neighbours(to)
             .into_iter()
-            .find_map(|neighbour| {
+            .filter_map(|neighbour| {
                 let piece = self.cells[neighbour.to_index()]?;
                 if piece.player == attacker || piece.kind == PieceKind::Crown {
                     return None;
@@ -255,6 +255,7 @@ impl BoardState {
                 let kind = self.capture_kind(attackers)?;
                 Some((neighbour, kind, attackers))
             })
+            .collect()
     }
 
     fn is_attrition_defeated(&self, player: PlayerKind) -> bool {
@@ -318,32 +319,40 @@ impl Game {
             ));
         }
 
-        if let Some((target, kind, attackers)) = board.check_piece_capture(to, player) {
-            board.cells[target.to_index()] = None;
-            let turn_result = match kind {
-                CaptureKind::Spy => TurnResult::SpyAttack {
-                    move_from: from,
-                    move_to: to,
-                    removed: target,
-                },
-                CaptureKind::Knight => {
-                    let lost_knight = if piece.kind == PieceKind::Crown {
-                        if attackers.0 == to {
-                            attackers.1
-                        } else {
-                            attackers.0
-                        }
-                    } else {
-                        to
-                    };
-                    board.cells[lost_knight.to_index()] = None;
-                    TurnResult::KnightAttack {
-                        move_from: from,
-                        move_to: to,
+        let captures = board.check_piece_captures(to, player);
+        if !captures.is_empty() {
+            let mut turn_result = None;
+            for (target, kind, attackers) in captures {
+                board.cells[target.to_index()] = None;
+                let captured_this = match kind {
+                    CaptureKind::Spy => TurnResult::Capture {
+                        last_move_from: from,
+                        last_move_to: to,
                         removed: target,
+                        second_attacker: attackers.1,
+                    },
+                    CaptureKind::Knight => {
+                        let lost_knight = if piece.kind == PieceKind::Crown {
+                            if attackers.0 == to {
+                                attackers.1
+                            } else {
+                                attackers.0
+                            }
+                        } else {
+                            to
+                        };
+                        board.cells[lost_knight.to_index()] = None;
+                        TurnResult::Capture {
+                            last_move_from: from,
+                            last_move_to: to,
+                            removed: target,
+                            second_attacker: attackers.1,
+                        }
                     }
-                }
-            };
+                };
+                turn_result.get_or_insert(captured_this);
+            }
+            let turn_result = turn_result.expect("captures is non-empty");
 
             let state = if board.is_attrition_defeated(player.opposite()) {
                 GameState::Victory(player)
