@@ -4,7 +4,7 @@ A simple board game.
 
 ## Rules
 
-Crown & Dagger is a two-player abstract strategy game played on a 7×7 board. Each player commands a Crown, four Knights, and four Spies, and must protect their own Crown while working to eliminate the opponent's forces.
+Crownfall is a two-player abstract strategy game played on a 7×7 board. Each player commands a Crown, five Knights, and four Spies, and must protect their own Crown while working to eliminate the opponent's forces.
 
 ### Components
 
@@ -29,6 +29,8 @@ Crown & Dagger is a two-player abstract strategy game played on a 7×7 board. Ea
 Rows A–B belong to one player; rows F–G belong to the other.
 
 ### Turn Structure
+
+White goes first.
 
 1. Players alternate turns.
 2. On a turn, a player moves exactly one of their own pieces one tile in an orthogonal direction (up, down, left, or right). Diagonal moves are not permitted.

@@ -8,3 +8,8 @@ edition.workspace = true
 [dependencies]
 serde.workspace = true
 game = {path = "../game"}
+common = {path = "../common"}
+anyhow.workspace = true
+pixels-graphics-lib.workspace = true
+reqwest.workspace = true
+chrono.workspace = true

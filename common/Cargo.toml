@@ -1,11 +1,11 @@
 [package]
-name = "game"
+name = "common"
 version.workspace = true
+edition.workspace = true
 authors.workspace = true
 description.workspace = true
-edition.workspace = true
 
 [dependencies]
+game = {path = "../game"}
 serde.workspace = true
-serde-big-array.workspace = true
-thiserror.workspace = true
+chrono.workspace = true
