@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "rust",
+  "steps": {
+    "install": {
+      "commands": []
+    },
+    "build": {
+      "commands": ["cargo build --package server --release", "mv ./target/release/server ./server_app"]
+    }
+  },
+  "deploy": {
+    "startCommand": "./server_app"
+  }
+}
