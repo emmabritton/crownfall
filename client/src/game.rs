@@ -207,7 +207,7 @@ fn draw_status(web_game: &WebGame, is_white: bool, graphics: &mut Graphics, last
     if let Some(result) = last_move {
         graphics.draw_text(
             &last_move_text(result),
-            TextPos::px(pos + (0, 40)),
+            TextPos::px(pos + (0, 52)),
             (WHITE, PixelFont::Standard6x7),
         );
     }
