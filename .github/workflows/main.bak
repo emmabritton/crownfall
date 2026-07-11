@@ -16,9 +16,25 @@ env:
 
 jobs:
 
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install linux libs
+        run: sudo apt-get update; sudo apt-get install --no-install-recommends pkg-config build-essential gcc-multilib libudev-dev
+
+      - name: fmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --all-targets -- -D clippy::all
+      - name: test
+        run: cargo test
 
   build_and_release:
     if: startsWith(github.ref, 'refs/tags/v')
+    needs: [check]
     name: Build and Release
     strategy:
       fail-fast: false
