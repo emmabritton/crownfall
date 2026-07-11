@@ -15,7 +15,7 @@ use crate::game::GameScene;
 
 const WIDTH: usize = 600;
 const HEIGHT: usize = 600;
-const DOMAIN: &'static str = "http://localhost:3000";//"https://crownfall-production-e14d.up.railway.app";
+const DOMAIN: &'static str = "https://crownfall-production-e14d.up.railway.app";
 
 fn main() -> Result<()> {
     let window_prefs = WindowPreferences::new("com", "emmabritton", "crownfall", 1)?;
