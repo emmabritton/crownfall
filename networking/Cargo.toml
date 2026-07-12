@@ -1,5 +1,5 @@
 [package]
-name = "common"
+name = "networking"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -9,3 +9,6 @@ description.workspace = true
 game = {path = "../game"}
 serde.workspace = true
 chrono.workspace = true
+local-ip-address.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

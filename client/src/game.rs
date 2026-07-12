@@ -1,23 +1,30 @@
-use std::fmt::format;
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
-use crate::{DOMAIN, HEIGHT, SceneName, SceneResult, WIDTH};
-use common::{GamePollResponse, WebGame, URL_PLAY, PerformActionRequest, PerformActionResponse};
+use crate::net::{poll, send};
+use crate::{BACKGROUND, HEIGHT, SceneName, SceneResult, WIDTH};
 use game::{Cell, GameState, PlayState, PlayerAction, PlayerKind, TurnResult};
+use networking::error::NetworkingError;
+use networking::models::WebGame;
+use networking::packet::{GameId, NetGameState, Packet, PerformActionState};
 use pixels_graphics_lib::MouseData;
 use pixels_graphics_lib::buffer_graphics_lib::Graphics;
-use pixels_graphics_lib::prelude::{coord, Coord, FxHashSet, KeyCode, MouseButton, PixelFont, Positioning, Scene, SceneUpdateResult, TextPos, Timer, Timing, Window, WrappingStrategy, BLACK, RED, WHITE, IndexedImage};
+use pixels_graphics_lib::prelude::{
+    BLACK, Coord, FxHashSet, IndexedImage, KeyCode, MouseButton, PixelFont, Positioning, RED,
+    Scene, SceneUpdateResult, TextPos, Timer, Timing, WHITE, Window, WrappingStrategy, coord,
+};
 use pixels_graphics_lib::scenes::SceneUpdateResult::Nothing;
 use reqwest::blocking::Client;
+use std::fmt::format;
 
 const BOARD_POS: Coord = Coord::new(16, 16);
 
 enum GameClientState {
+    PreLoad(GameId),
+    Loading,
     Playing(WebGame),
     Error(String),
 }
 
 pub struct GameScene {
-    client: Client,
     state: GameClientState,
     is_white: bool,
     piece_renderer: PieceRenderer,
@@ -30,13 +37,11 @@ pub struct GameScene {
 }
 
 impl GameScene {
-    pub fn new(id: String, is_white: bool) -> Box<GameScene> {
-        let client = Client::new();
-        let state = get_game(&client, &id);
+    pub fn new(id: String) -> Box<GameScene> {
+        let is_white = true; //how to know?
 
         Box::new(GameScene {
-            client,
-            state,
+            state: GameClientState::PreLoad(id),
             is_white,
             last_move: None,
             piece_renderer: PieceRenderer::new(),
@@ -44,7 +49,9 @@ impl GameScene {
             timer: Timer::new(1.0),
             highlight: Vec::new(),
             highlight_origin: Cell::new_index(0),
-            highlight_image: IndexedImage::from_file_contents(include_bytes!("../resources/cell_valid.ici"))
+            highlight_image: IndexedImage::from_file_contents(include_bytes!(
+                "../resources/cell_valid.ici"
+            ))
             .unwrap()
             .0,
         })
@@ -53,7 +60,7 @@ impl GameScene {
 
 impl Scene<SceneResult, SceneName> for GameScene {
     fn render(&self, graphics: &mut Graphics, mouse: &MouseData, _: &FxHashSet<KeyCode>) {
-        graphics.clear(BLACK);
+        graphics.clear(BACKGROUND);
         match &self.state {
             GameClientState::Playing(web_game) => {
                 self.board_renderer.render(graphics);
@@ -71,11 +78,24 @@ impl Scene<SceneResult, SceneName> for GameScene {
                 }
             }
             GameClientState::Error(err) => {
+                graphics.clear(BLACK);
                 graphics.draw_text(
                     &format!("Error: {err}\nPlease restart client"),
                     TextPos::px(coord!(WIDTH / 2, HEIGHT / 2)),
                     (
                         RED,
+                        PixelFont::Standard6x7,
+                        WrappingStrategy::AtCol(60),
+                        Positioning::Center,
+                    ),
+                );
+            }
+            GameClientState::PreLoad(_) | GameClientState::Loading => {
+                graphics.draw_text(
+                    "Loading...",
+                    TextPos::px(coord!(WIDTH / 2, HEIGHT / 2)),
+                    (
+                        WHITE,
                         PixelFont::Standard6x7,
                         WrappingStrategy::AtCol(60),
                         Positioning::Center,
@@ -94,50 +114,41 @@ impl Scene<SceneResult, SceneName> for GameScene {
     ) {
         if mouse_button == MouseButton::Left {
             match &self.state {
-                GameClientState::Playing(web_game) => {
-                    match &web_game.game.state {
-                        GameState::Playing(play_state) => {
-                            let is_players_turn = (play_state.player() == PlayerKind::White && self.is_white) || (play_state.player() == PlayerKind::Black && !self.is_white);
-                            if is_players_turn {
-                                let offset = mouse.xy - BOARD_POS;
-                                let grid_coord = offset/CELL_SIZE;
-                                if (0..=6).contains(&grid_coord.x) && (0..=6).contains(&grid_coord.y) {
-                                    let cell = Cell::new_coord(grid_coord.x as usize, grid_coord.y as usize);
-                                    if let Some(piece) = web_game.game.board.cells[cell.index] {
-                                        if piece.player == play_state.player() {
-                                            self.highlight_origin = cell;
-                                            self.highlight = web_game.game.board.get_valid_destinations_for(cell);
-                                        }
-                                    } else  if self.highlight.contains(&cell) {
-                                        self.highlight.clear();
-                                        self.state = match self.client.post(format!("{DOMAIN}{URL_PLAY}"))
-                                            .json(&PerformActionRequest {
-                                                id: web_game.id.clone(),
-                                                action: PlayerAction::Move {
-                                                    player: play_state.player(),
-                                                    from: self.highlight_origin,
-                                                    to: cell,
-                                                },
-                                            }).send() {
-                                            Ok(resp) => match resp.json::<PerformActionResponse>() {
-                                                Ok(response) => match response {
-                                                    PerformActionResponse::Success { game, result } => {
-                                                        self.last_move = result;
-                                                        get_game(&self.client, &game.id)
-                                                    }
-                                                    PerformActionResponse::Error(err) => GameClientState::Error(format!("{err:?}")),
-                                                },
-                                                Err(err) => GameClientState::Error(err.to_string()),
-                                            },
-                                            Err(err) => GameClientState::Error(err.to_string()),
-                                        }
-                                    };
-                                }
+                GameClientState::Playing(web_game) => match &web_game.game.state {
+                    GameState::Playing(play_state) => {
+                        let is_players_turn = (play_state.player() == PlayerKind::White
+                            && self.is_white)
+                            || (play_state.player() == PlayerKind::Black && !self.is_white);
+                        if is_players_turn {
+                            let offset = mouse.xy - BOARD_POS;
+                            let grid_coord = offset / CELL_SIZE;
+                            if (0..=6).contains(&grid_coord.x) && (0..=6).contains(&grid_coord.y) {
+                                let cell =
+                                    Cell::new_coord(grid_coord.x as usize, grid_coord.y as usize);
+                                if let Some(piece) = web_game.game.board.cells[cell.index] {
+                                    if piece.player == play_state.player() {
+                                        self.highlight_origin = cell;
+                                        self.highlight =
+                                            web_game.game.board.get_valid_destinations_for(cell);
+                                    }
+                                } else if self.highlight.contains(&cell) {
+                                    self.highlight.clear();
+                                    if let Err(e) = send(Packet::PerformActionRequest(
+                                        web_game.id.clone(),
+                                        PlayerAction::Move {
+                                            player: play_state.player(),
+                                            from: self.highlight_origin,
+                                            to: cell,
+                                        },
+                                    )) {
+                                        self.state = GameClientState::Error(e.to_string())
+                                    }
+                                };
                             }
                         }
-                        _ => {}
                     }
-                }
+                    _ => {}
+                },
                 _ => {}
             }
         }
@@ -151,26 +162,60 @@ impl Scene<SceneResult, SceneName> for GameScene {
         _: &Window,
     ) -> SceneUpdateResult<SceneResult, SceneName> {
         match &self.state {
-            GameClientState::Playing(web_game) => {
-                match &web_game.game.state {
-                    GameState::Playing(play_state) => {
-                        let is_players_turn = play_state.player() == PlayerKind::White && self.is_white;
-                        if !is_players_turn {
-                            if self.timer.update(timing) {
-                                self.state = get_game(&self.client, &web_game.id);
+            GameClientState::Playing(web_game) => match poll() {
+                Ok(packets) => {
+                    for packet in packets {
+                        match packet {
+                            Packet::GameUpdateCommand(game, _) => {
+                                self.state = GameClientState::Playing(game)
+                            }
+                            Packet::PerformActionResponse(state) => match state {
+                                PerformActionState::Done => {}
+                                PerformActionState::NotYourTurn => {}
+                                PerformActionState::InvalidGame => {}
+                            },
+                            _ => {}
+                        }
+                    }
+                }
+                Err(e) => self.state = GameClientState::Error(format!("{e}")),
+            },
+            GameClientState::Error(_) => {}
+            GameClientState::Loading => match poll() {
+                Ok(packets) => {
+                    for packet in packets {
+                        if let Packet::PollGameResponse(state) = packet {
+                            match state {
+                                NetGameState::Active(game) => {
+                                    self.state = GameClientState::Playing(game)
+                                }
+                                NetGameState::InvalidGame => {
+                                    self.state = GameClientState::Error("Invalid game".to_string())
+                                }
                             }
                         }
                     }
-                    GameState::Victory(_) => {}
+                }
+                Err(e) => self.state = GameClientState::Error(format!("{e}")),
+            },
+            GameClientState::PreLoad(id) => {
+                if let Err(e) = send(Packet::PollGameRequest(id.clone())) {
+                    self.state = GameClientState::Error(format!("{e}"));
+                } else {
+                    self.state = GameClientState::Loading;
                 }
             }
-            GameClientState::Error(_) => {}
         }
         Nothing
     }
 }
 
-fn draw_status(web_game: &WebGame, is_white: bool, graphics: &mut Graphics, last_move: &Option<TurnResult>) {
+fn draw_status(
+    web_game: &WebGame,
+    is_white: bool,
+    graphics: &mut Graphics,
+    last_move: &Option<TurnResult>,
+) {
     let pos = coord!(300, 16);
     graphics.draw_text(
         "Crownfall",
@@ -204,21 +249,13 @@ fn draw_status(web_game: &WebGame, is_white: bool, graphics: &mut Graphics, last
         TextPos::px(pos + (0, 40)),
         (WHITE, PixelFont::Standard6x7),
     );
-    if let Some(result) = last_move {
-        graphics.draw_text(
-            &last_move_text(result),
-            TextPos::px(pos + (0, 52)),
-            (WHITE, PixelFont::Standard6x7),
-        );
-    }
-}
-
-fn last_move_text(turn_result: &TurnResult) -> String{
-    match turn_result {
-        TurnResult::PieceMove { from, to } => format!("Moved from {:?} to {:?}", from.to_coord(), to.to_coord()),
-        TurnResult::Capture { last_move_from, last_move_to, removed, second_attacker } => format!("Captured piece at {:?}", removed.to_coord()),
-        TurnResult::Victory { surrounded_crown } => format!("Captured crown at {:?}", surrounded_crown.to_coord())
-    }
+    // if let Some(result) = last_move {
+    //     graphics.draw_text(
+    //         &last_move_text(result),
+    //         TextPos::px(pos + (0, 52)),
+    //         (WHITE, PixelFont::Standard6x7),
+    //     );
+    // }
 }
 
 fn state_to_text(state: &GameState, white_name: &str, black_name: &str) -> String {
@@ -253,18 +290,5 @@ fn state_to_text(state: &GameState, white_name: &str, black_name: &str) -> Strin
             };
             format!("Victory: {name}")
         }
-    }
-}
-
-fn get_game(client: &Client, id: &str) -> GameClientState {
-    match client.get(format!("{DOMAIN}/poll/{id}")).send() {
-        Ok(response) => match response.json::<GamePollResponse>() {
-            Ok(result) => match result {
-                GamePollResponse::Active(game) => GameClientState::Playing(game),
-                GamePollResponse::Error(err) => GameClientState::Error(format!("{err:?}")),
-            },
-            Err(err) => GameClientState::Error(err.to_string()),
-        },
-        Err(err) => GameClientState::Error(err.to_string()),
     }
 }

@@ -21,45 +21,6 @@ pub const BOARD_LENGTH: usize = 7;
 
 pub const BOARD_SIZE: (usize, usize) = (BOARD_LENGTH, BOARD_LENGTH);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub enum PlayerKind {
-    White,
-    Black,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum PlayerAction {
-    Move {
-        player: PlayerKind,
-        from: Cell,
-        to: Cell,
-    },
-    KnightRemoval {
-        player: PlayerKind,
-        at: Cell,
-    },
-    Surrender {
-        player: PlayerKind,
-    },
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum TurnResult {
-    PieceMove {
-        from: Cell,
-        to: Cell,
-    },
-    Capture {
-        last_move_from: Cell,
-        last_move_to: Cell,
-        removed: Cell,
-        second_attacker: Cell,
-    },
-    Victory {
-        surrounded_crown: Cell,
-    },
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum PlayState {
     WaitingForInput {
@@ -118,4 +79,46 @@ impl Cell {
     pub fn to_coord(self) -> (usize, usize) {
         (self.index % BOARD_LENGTH, self.index / BOARD_LENGTH)
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub enum PlayerKind {
+    White,
+    Black,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum PlayerAction {
+    Move {
+        player: PlayerKind,
+        from: Cell,
+        to: Cell,
+    },
+    KnightRemoval {
+        player: PlayerKind,
+        at: Cell,
+    },
+    Surrender {
+        player: PlayerKind,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum TurnResult {
+    PieceMove {
+        player: PlayerKind,
+        from: Cell,
+        to: Cell,
+    },
+    Capture {
+        player: PlayerKind,
+        last_move_from: Cell,
+        last_move_to: Cell,
+        removed: Cell,
+        second_attacker: Cell,
+    },
+    Victory {
+        player: PlayerKind,
+        surrounded_crown: Cell,
+    },
 }

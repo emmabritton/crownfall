@@ -209,19 +209,57 @@ impl BoardState {
     }
 
     /// Determines which capture rule (if any) the attacking pair satisfies.
+    ///
+    /// The Crown may only stand in for a Knight, never a Spy (README "Crown" section),
+    /// so a Crown+Spy pair does not form a valid capture.
     fn capture_kind(&self, attackers: (Cell, Cell)) -> Option<CaptureKind> {
         let a = self.cells[attackers.0.to_index()]?.kind;
         let b = self.cells[attackers.1.to_index()]?.kind;
         match (a, b) {
             (PieceKind::Spy, PieceKind::Spy) => Some(CaptureKind::Spy),
             (PieceKind::Knight, PieceKind::Knight) => Some(CaptureKind::Knight),
-            (PieceKind::Crown, PieceKind::Spy) | (PieceKind::Spy, PieceKind::Crown) => {
-                Some(CaptureKind::Spy)
-            }
             (PieceKind::Crown, PieceKind::Knight) | (PieceKind::Knight, PieceKind::Crown) => {
                 Some(CaptureKind::Knight)
             }
             _ => None,
+        }
+    }
+
+    /// The attacker's own piece other than `moved` in an attacking pair.
+    fn other_attacker(attackers: (Cell, Cell), moved: Cell) -> Cell {
+        if attackers.0 == moved {
+            attackers.1
+        } else {
+            attackers.0
+        }
+    }
+
+    /// True if the piece just moved to `at` (owned by `mover`) is captured by a
+    /// pre-existing enemy Spy pair — the Spy Capture rule applies "even if the enemy
+    /// moved there" (README "Spy Capture"). The Crown is exempt: its own capture is
+    /// governed exclusively by the higher-priority crown-loss check.
+    fn check_self_spy_trap(&self, at: Cell, mover: PlayerKind) -> bool {
+        match self.cells[at.to_index()] {
+            Some(piece) if piece.player == mover && piece.kind != PieceKind::Crown => {
+                self.find_attacking_pair(at, mover.opposite())
+                    .and_then(|pair| self.capture_kind(pair))
+                    == Some(CaptureKind::Spy)
+            }
+            _ => false,
+        }
+    }
+
+    /// True if the Crown just moved to `at` (owned by `mover`) walked into a
+    /// pre-existing enemy attacking pair. Crown-loss has the highest priority of any
+    /// capture (README "Losing the Game"), so this must be checked before any other
+    /// capture the same move might otherwise complete.
+    fn check_own_crown_trap(&self, at: Cell, mover: PlayerKind) -> bool {
+        match self.cells[at.to_index()] {
+            Some(piece) if piece.player == mover && piece.kind == PieceKind::Crown => self
+                .find_attacking_pair(at, mover.opposite())
+                .and_then(|pair| self.capture_kind(pair))
+                .is_some(),
+            _ => false,
         }
     }
 
@@ -308,6 +346,23 @@ impl Game {
         board.cells[from.to_index()] = None;
         board.cells[to.to_index()] = Some(piece);
 
+        // Crown-loss has the highest priority of any capture and is checked first,
+        // even ahead of a capture this same move would otherwise complete (README
+        // "Crown" section — the crown moving into a trap loses the game outright).
+        if board.check_own_crown_trap(to, player) {
+            board.cells[to.to_index()] = None;
+            return Ok((
+                Game {
+                    board,
+                    state: GameState::Victory(player.opposite()),
+                },
+                Some(TurnResult::Victory {
+                    player: player.opposite(),
+                    surrounded_crown: to,
+                }),
+            ));
+        }
+
         if let Some(surrounded_crown) = board.check_crown_capture(to, player) {
             board.cells[surrounded_crown.to_index()] = None;
             return Ok((
@@ -315,7 +370,36 @@ impl Game {
                     board,
                     state: GameState::Victory(player),
                 },
-                Some(TurnResult::Victory { surrounded_crown }),
+                Some(TurnResult::Victory {
+                    player,
+                    surrounded_crown,
+                }),
+            ));
+        }
+
+        // Spy Capture applies "even if the enemy moved there" — the piece just moved
+        // can walk straight into a pre-existing enemy Spy pincer and be captured by it.
+        if board.check_self_spy_trap(to, player) {
+            board.cells[to.to_index()] = None;
+            let attackers = board
+                .find_attacking_pair(to, player.opposite())
+                .expect("check_self_spy_trap confirmed an attacking pair");
+            let state = if board.is_attrition_defeated(player) {
+                GameState::Victory(player.opposite())
+            } else {
+                GameState::Playing(PlayState::WaitingForInput {
+                    player: player.opposite(),
+                })
+            };
+            return Ok((
+                Game { board, state },
+                Some(TurnResult::Capture {
+                    player,
+                    last_move_from: from,
+                    last_move_to: to,
+                    removed: to,
+                    second_attacker: attackers.1,
+                }),
             ));
         }
 
@@ -324,29 +408,28 @@ impl Game {
             let mut turn_result = None;
             for (target, kind, attackers) in captures {
                 board.cells[target.to_index()] = None;
+                let second_attacker = BoardState::other_attacker(attackers, to);
                 let captured_this = match kind {
                     CaptureKind::Spy => TurnResult::Capture {
+                        player,
                         last_move_from: from,
                         last_move_to: to,
                         removed: target,
-                        second_attacker: attackers.1,
+                        second_attacker,
                     },
                     CaptureKind::Knight => {
                         let lost_knight = if piece.kind == PieceKind::Crown {
-                            if attackers.0 == to {
-                                attackers.1
-                            } else {
-                                attackers.0
-                            }
+                            second_attacker
                         } else {
                             to
                         };
                         board.cells[lost_knight.to_index()] = None;
                         TurnResult::Capture {
+                            player,
                             last_move_from: from,
                             last_move_to: to,
                             removed: target,
-                            second_attacker: attackers.1,
+                            second_attacker,
                         }
                     }
                 };
@@ -372,7 +455,7 @@ impl Game {
                     player: player.opposite(),
                 }),
             },
-            Some(TurnResult::PieceMove { from, to }),
+            Some(TurnResult::PieceMove { player, from, to }),
         ))
     }
 

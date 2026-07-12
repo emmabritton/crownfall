@@ -1,24 +1,29 @@
-use crate::DOMAIN;
+use crate::BACKGROUND;
+use crate::net::{poll, send};
 use crate::{HEIGHT, SceneName, SceneResult, WIDTH};
 use chrono::Local;
-use common::{PendingGame, PendingGameListResponse, URL_PENDING};
+use networking::models::PendingGame;
+use networking::packet::{GameId, Packet, PendingGameState};
 use pixels_graphics_lib::prelude::SceneUpdateResult::Nothing;
 use pixels_graphics_lib::prelude::*;
 use pixels_graphics_lib::ui::button::Button;
 use pixels_graphics_lib::ui::styles::UiStyle;
 use pixels_graphics_lib::ui::{PixelView, ViewState};
-use reqwest::blocking::Client;
 
 enum GameListState {
+    PreLoad,
     Loading,
+    Joining,
+    Creating,
+    WaitingForOtherPlayer(GameId),
     List(Vec<PendingGame>),
     Error(String),
 }
 
 pub struct GameListScene {
-    client: Client,
     state: GameListState,
     reload_timer: Timer,
+    join_timer: Timer,
     list_buttons: Vec<Button>,
     create_button: Button,
     result: SceneUpdateResult<SceneResult, SceneName>,
@@ -40,9 +45,9 @@ impl GameListScene {
                 .set_state(ViewState::Disabled);
         }
         Box::new(Self {
-            client: Client::new(),
-            state: GameListState::Loading,
-            reload_timer: Timer::new_with_delay(8.0, 4.0),
+            state: GameListState::PreLoad,
+            reload_timer: Timer::new_with_delay(20.0, 10.0),
+            join_timer: Timer::new_with_delay(10.0, 1.0),
             list_buttons,
             create_button: Button::new(coord!(16, 500), "Create game", Some(100), &style.button),
             result: Nothing,
@@ -52,17 +57,23 @@ impl GameListScene {
 
 impl Scene<SceneResult, SceneName> for GameListScene {
     fn render(&self, graphics: &mut Graphics, mouse: &MouseData, _: &FxHashSet<KeyCode>) {
+        graphics.clear(BACKGROUND);
+
         match &self.state {
-            GameListState::Loading => {
-                graphics.clear(BLACK);
-                graphics.draw_text(
-                    "Loading...",
-                    TextPos::px(coord!(WIDTH / 2, HEIGHT / 2)),
-                    (WHITE, PixelFont::Standard6x7, Positioning::Center),
-                )
-            }
+            GameListState::PreLoad
+            | GameListState::Creating
+            | GameListState::Joining
+            | GameListState::Loading => graphics.draw_text(
+                "Loading games...",
+                TextPos::px(coord!(WIDTH / 2, HEIGHT / 2)),
+                (WHITE, PixelFont::Standard6x7, Positioning::Center),
+            ),
+            GameListState::WaitingForOtherPlayer(_) => graphics.draw_text(
+                "Waiting for other player...",
+                TextPos::px(coord!(WIDTH / 2, HEIGHT / 2)),
+                (WHITE, PixelFont::Standard6x7, Positioning::Center),
+            ),
             GameListState::List(list) => {
-                graphics.clear(BLACK);
                 let start = coord!(66, 22);
                 let line_height = 24;
                 list.iter().enumerate().for_each(|(i, game)| {
@@ -112,14 +123,29 @@ impl Scene<SceneResult, SceneName> for GameListScene {
         _: &FxHashSet<KeyCode>,
     ) {
         if mouse_button == MouseButton::Left {
-            if let GameListState::List(list) = &self.state {
+            let game_ids = if let GameListState::List(list) = &self.state {
+                Some(list.iter().map(|game| game.id.clone()).collect::<Vec<_>>())
+            } else {
+                None
+            };
+
+            if let Some(game_ids) = game_ids {
                 if self.create_button.on_mouse_click(down_at, mouse.xy) {
-                    self.result = SceneUpdateResult::Push(false, SceneName::CreateGame)
+                    if let Err(e) = send(Packet::CreateGameRequest) {
+                        self.state = GameListState::Error(format!("{:?}", e));
+                    } else {
+                        self.state = GameListState::Creating;
+                    }
                 }
                 for (i, button) in self.list_buttons.iter_mut().enumerate() {
                     if button.on_mouse_click(down_at, mouse.xy) {
-                        self.result =
-                            SceneUpdateResult::Push(false, SceneName::JoinGame(list[i].id.clone()));
+                        if let Some(id) = game_ids.get(i) {
+                            if let Err(e) = send(Packet::JoinGameRequest(id.clone())) {
+                                self.state = GameListState::Error(format!("{:?}", e));
+                            } else {
+                                self.state = GameListState::Joining;
+                            }
+                        }
                     }
                 }
             }
@@ -133,36 +159,35 @@ impl Scene<SceneResult, SceneName> for GameListScene {
         _: &FxHashSet<KeyCode>,
         _: &Window,
     ) -> SceneUpdateResult<SceneResult, SceneName> {
-        match self.state {
-            GameListState::Loading => {
-                match self.client.get(format!("{DOMAIN}{URL_PENDING}")).send() {
-                    Ok(response) => match response.json::<PendingGameListResponse>() {
-                        Ok(resp) => match resp {
-                            PendingGameListResponse::Success(mut list) => {
-                                list.sort_by(|l, r| l.created.cmp(&r.created));
-                                self.list_buttons.iter_mut().enumerate().for_each(|(i, b)| {
-                                    let state = if i < list.len() {
-                                        ViewState::Normal
-                                    } else {
-                                        ViewState::Disabled
-                                    };
-                                    b.set_state(state);
-                                });
-                                self.reload_timer.reset();
-                                self.state = GameListState::List(list);
-                            }
-                            PendingGameListResponse::Error(error) => {
-                                self.state = GameListState::Error(format!("{error:?}"))
-                            }
-                        },
-                        Err(error) => self.state = GameListState::Error(error.to_string()),
-                    },
-                    Err(error) => self.state = GameListState::Error(error.to_string()),
+        match &self.state {
+            GameListState::PreLoad => {
+                if let Err(e) = send(Packet::PendingListRequest) {
+                    self.state = GameListState::Error(format!("{:?}", e));
+                } else {
+                    self.state = GameListState::Loading;
                 }
             }
+            GameListState::Loading => match poll() {
+                Ok(packets) => {
+                    for packet in packets {
+                        if let Packet::PendingListResponse(list) = packet {
+                            self.list_buttons.iter_mut().enumerate().for_each(|(i, b)| {
+                                let state = if i < list.len() {
+                                    ViewState::Normal
+                                } else {
+                                    ViewState::Disabled
+                                };
+                                b.set_state(state);
+                            });
+                            self.state = GameListState::List(list);
+                        }
+                    }
+                }
+                Err(e) => self.state = GameListState::Error(format!("{:?}", e)),
+            },
             GameListState::List(_) => {
                 if self.reload_timer.update(timing) {
-                    self.state = GameListState::Loading;
+                    self.state = GameListState::PreLoad;
                 }
                 self.create_button.update(timing);
                 for button in self.list_buttons.iter_mut() {
@@ -170,6 +195,65 @@ impl Scene<SceneResult, SceneName> for GameListScene {
                 }
             }
             GameListState::Error(_) => {}
+            GameListState::Joining => match poll() {
+                Ok(packets) => {
+                    for packet in packets {
+                        if let Packet::JoinGameResponse(id, joined) = packet {
+                            if joined {
+                                return SceneUpdateResult::Push(false, SceneName::Game(id));
+                            } else {
+                                self.state = GameListState::PreLoad;
+                            }
+                        }
+                    }
+                }
+                Err(e) => self.state = GameListState::Error(format!("{:?}", e)),
+            },
+            GameListState::Creating => match poll() {
+                Ok(packets) => {
+                    for packet in packets {
+                        if let Packet::CreateGameResponse(id) = packet {
+                            if let Some(id) = id {
+                                self.state = GameListState::WaitingForOtherPlayer(id)
+                            } else {
+                                self.state = GameListState::PreLoad;
+                            }
+                        }
+                    }
+                }
+                Err(e) => self.state = GameListState::Error(format!("{:?}", e)),
+            },
+            GameListState::WaitingForOtherPlayer(id) => {
+                let id = id.clone();
+                if self.join_timer.update(timing) {
+                    if let Err(e) = send(Packet::PollPendingGameRequest(id.clone())) {
+                        self.state = GameListState::Error(format!("{:?}", e));
+                    }
+                }
+                match poll() {
+                    Ok(packets) => {
+                        for packet in packets {
+                            if let Packet::PollPendingGameResponse(state) = packet {
+                                match state {
+                                    PendingGameState::Pending => {}
+                                    PendingGameState::Joined => {
+                                        return SceneUpdateResult::Push(
+                                            false,
+                                            SceneName::Game(id.clone()),
+                                        );
+                                    }
+                                    PendingGameState::Invalid => {
+                                        self.state = GameListState::Error(
+                                            "Game state is invalid".to_string(),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => self.state = GameListState::Error(format!("{:?}", e)),
+                }
+            }
         }
 
         self.result.clone()
@@ -177,6 +261,6 @@ impl Scene<SceneResult, SceneName> for GameListScene {
 
     fn resuming(&mut self, _: Option<SceneResult>) {
         self.result = Nothing;
-        self.state = GameListState::Loading;
+        self.state = GameListState::PreLoad;
     }
 }

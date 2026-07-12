@@ -8,7 +8,7 @@ edition.workspace = true
 [dependencies]
 serde.workspace = true
 game = {path = "../game"}
-common = {path = "../common"}
+networking = {path = "../networking"}
 anyhow.workspace = true
 pixels-graphics-lib.workspace = true
 reqwest.workspace = true

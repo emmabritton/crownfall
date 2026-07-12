@@ -1,23 +1,69 @@
-mod create_game;
-mod game_list_scene;
-mod join_game;
-mod joining;
 mod game;
+mod game_list_scene;
 mod game_renderer;
+mod login;
+mod net;
 
-use crate::create_game::CreateGameScene;
+use crate::game::GameScene;
 use crate::game_list_scene::GameListScene;
-use crate::join_game::JoinGameScene;
-use crate::joining::JoiningScene;
 use anyhow::Result;
 use pixels_graphics_lib::prelude::*;
-use crate::game::GameScene;
+use std::env::VarError;
+use std::net::{SocketAddr, ToSocketAddrs};
+use std::str::FromStr;
 
 const WIDTH: usize = 600;
 const HEIGHT: usize = 600;
-const DOMAIN: &'static str = "https://crownfall-production-e14d.up.railway.app";
+
+const BACKGROUND: Color = Color {
+    r: 30,
+    g: 30,
+    b: 140,
+    a: 255,
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Settings {
+    pub username: Option<String>,
+}
+
+fn settings() -> AppPrefs<Settings> {
+    AppPrefs::new("app", "emmabritton", "crownfall", || Settings {
+        username: None,
+    })
+    .expect("Unable to create prefs file")
+}
+
+fn username() -> Option<String> {
+    match std::env::var("NAME") {
+        Ok(txt) => Some(txt),
+        Err(_) => settings().data.username,
+    }
+}
+
+use crate::login::LoginScene;
+use crate::net::send;
+use networking::packet::{GameId, Packet};
+use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 fn main() -> Result<()> {
+    if std::env::args().any(|x| x == "--reset") {
+        settings().data.username = None;
+        settings().save();
+    }
+
+    let addr = if std::env::var("LOCAL").is_ok() {
+        SocketAddr::from(([127, 0, 0, 1], 3000))
+    } else {
+        "crownfall-production-e14d.up.railway.app:8080"
+            .to_socket_addrs()
+            .expect("creating socket addr")
+            .next()
+            .expect("no match found for socket")
+    };
+
+    net::init(addr)?;
     let window_prefs = WindowPreferences::new("com", "emmabritton", "crownfall", 1)?;
     let options = Options::default();
     let switcher: SceneSwitcher<SceneResult, SceneName> =
@@ -26,19 +72,27 @@ fn main() -> Result<()> {
                 scene_stack.clear();
                 scene_stack.push(GameListScene::new(style));
             }
-            SceneName::CreateGame => scene_stack.push(CreateGameScene::new(style)),
-            SceneName::JoinGame(id) => scene_stack.push(JoinGameScene::new(id, style)),
-            SceneName::Joining(id) => scene_stack.push(JoiningScene::new(id)),
-            SceneName::Game(id, is_white) => scene_stack.push(GameScene::new(id, is_white)),
+            SceneName::Game(id) => scene_stack.push(GameScene::new(id)),
+            SceneName::RejoinGame(game_id) => {
+                scene_stack.push(GameListScene::new(style));
+                scene_stack.push(GameScene::new(game_id));
+            }
         };
-    let first_scene = GameListScene::new(&options.style);
     run_scenes(
         WIDTH,
         HEIGHT,
         "Crownfall",
         Some(window_prefs),
         switcher,
-        first_scene,
+        if username().is_none() {
+            LoginScene::new(settings(), &options.style)
+        } else {
+            send(Packet::LoginRequest(
+                username().expect("Username is required"),
+            ))
+            .expect("Failed to login");
+            GameListScene::new(&options.style)
+        },
         options,
         empty_pre_post(),
     )?;
@@ -48,10 +102,8 @@ fn main() -> Result<()> {
 #[derive(Clone, Debug, PartialEq)]
 enum SceneName {
     GameList,
-    CreateGame,
-    JoinGame(String),
-    Joining(String),
-    Game(String, bool),
+    Game(GameId),
+    RejoinGame(GameId),
 }
 
 #[derive(Clone, Debug, PartialEq)]
