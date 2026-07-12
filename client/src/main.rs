@@ -56,7 +56,7 @@ fn main() -> Result<()> {
     let addr = if std::env::var("LOCAL").is_ok() {
         SocketAddr::from(([127, 0, 0, 1], 3000))
     } else {
-        "crownfall-production-e14d.up.railway.app:8080"
+        "caboose.proxy.rlwy.net:55421"
             .to_socket_addrs()
             .expect("creating socket addr")
             .next()
