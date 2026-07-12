@@ -1,7 +1,7 @@
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::net::{poll, send};
 use crate::{BACKGROUND, HEIGHT, SceneName, SceneResult, WIDTH, username};
-use game::{Cell, GameState, PlayState, PlayerAction, PlayerKind, TurnResult};
+use game::{Cell, GameState, PlayState, Piece, PlayerAction, PlayerKind, TurnResult};
 use networking::models::WebGame;
 use networking::packet::{GameId, NetGameState, Packet, PerformActionState};
 use pixels_graphics_lib::MouseData;
@@ -10,6 +10,7 @@ use pixels_graphics_lib::prelude::*;
 use pixels_graphics_lib::scenes::SceneUpdateResult::Nothing;
 
 const BOARD_POS: Coord = Coord::new(16, 16);
+const MOVE_ANIMATION_DURATION: f64 = 0.25;
 
 enum GameClientState {
     PreLoad(GameId),
@@ -24,11 +25,23 @@ struct DragState {
     pointer: Coord,
 }
 
+/// Animates a piece sliding from `from` to `to` after an update from the other
+/// player arrives, rather than snapping straight to the new board state.
+struct MoveAnimation {
+    piece: Piece,
+    from: Cell,
+    to: Cell,
+    pending: WebGame,
+    is_white: bool,
+    elapsed: f64,
+}
+
 pub struct GameScene {
     state: GameClientState,
     piece_renderer: PieceRenderer,
     board_renderer: BoardRenderer,
     drag: Option<DragState>,
+    animation: Option<MoveAnimation>,
     highlight_image: IndexedImage,
     last_move: Option<TurnResult>,
 }
@@ -41,12 +54,59 @@ impl GameScene {
             piece_renderer: PieceRenderer::new(),
             board_renderer: BoardRenderer::new(BOARD_POS),
             drag: None,
+            animation: None,
             highlight_image: IndexedImage::from_file_contents(include_bytes!(
                 "../resources/cell_valid.ici"
             ))
             .unwrap()
             .0,
         })
+    }
+
+    /// Begin animating `game`'s incoming update if it was the other player moving
+    /// a piece; otherwise apply it immediately.
+    fn apply_update(&mut self, game: WebGame, is_white: bool, turn_result: Option<&TurnResult>) {
+        self.board_renderer.set_flipped(!is_white);
+        // A new update arrived mid-animation; snap to the previous target first.
+        if let Some(anim) = self.animation.take() {
+            self.state = GameClientState::Playing(anim.pending, anim.is_white);
+        }
+        let moved_by_other = turn_result.and_then(move_cells).filter(
+            |(player, _, _)| {
+                let mover_is_white = *player == PlayerKind::White;
+                mover_is_white != is_white
+            },
+        );
+        if let Some((_, from, to)) = moved_by_other
+            && let GameClientState::Playing(current, _) = &self.state
+            && let Some(piece) = current.game.board.cells[from.index]
+        {
+            self.animation = Some(MoveAnimation {
+                piece,
+                from,
+                to,
+                pending: game,
+                is_white,
+                elapsed: 0.0,
+            });
+        } else {
+            self.state = GameClientState::Playing(game, is_white);
+        }
+    }
+}
+
+/// Extracts the (player, from, to) cells of a move from a turn result, if it
+/// represents a piece moving on the board.
+fn move_cells(result: &TurnResult) -> Option<(PlayerKind, Cell, Cell)> {
+    match result {
+        TurnResult::PieceMove { player, from, to } => Some((*player, *from, *to)),
+        TurnResult::Capture {
+            player,
+            last_move_from,
+            last_move_to,
+            ..
+        } => Some((*player, *last_move_from, *last_move_to)),
+        TurnResult::Victory { .. } => None,
     }
 }
 
@@ -65,11 +125,22 @@ impl Scene<SceneResult, SceneName> for GameScene {
                     if self.drag.as_ref().is_some_and(|d| d.origin.index == i) {
                         continue;
                     }
+                    if self.animation.as_ref().is_some_and(|a| a.from.index == i) {
+                        continue;
+                    }
                     if let Some(cell) = cell {
                         let xy = self.board_renderer.pos_for(Cell::new_index(i));
                         let image = self.piece_renderer.image_for_piece(cell);
                         graphics.draw_indexed_image(xy, image);
                     }
+                }
+                if let Some(anim) = &self.animation {
+                    let t = (anim.elapsed / MOVE_ANIMATION_DURATION).clamp(0.0, 1.0);
+                    let from = self.board_renderer.pos_for(anim.from);
+                    let to = self.board_renderer.pos_for(anim.to);
+                    let xy = from + (to - from) * t;
+                    let image = self.piece_renderer.image_for_piece(&anim.piece);
+                    graphics.draw_indexed_image(xy, image);
                 }
                 draw_status(web_game, *is_white, graphics, &self.last_move);
                 if let Some(drag) = &self.drag {
@@ -195,21 +266,27 @@ impl Scene<SceneResult, SceneName> for GameScene {
 
     fn update(
         &mut self,
-        _: &Timing,
+        timing: &Timing,
         _: &MouseData,
         _: &FxHashSet<KeyCode>,
         _: &Window,
     ) -> SceneUpdateResult<SceneResult, SceneName> {
+        if let Some(anim) = &mut self.animation {
+            anim.elapsed += timing.fixed_time_step;
+            if anim.elapsed >= MOVE_ANIMATION_DURATION {
+                let anim = self.animation.take().unwrap();
+                self.state = GameClientState::Playing(anim.pending, anim.is_white);
+            }
+        }
         match &self.state {
             GameClientState::Playing(_, _) => match poll() {
                 Ok(packets) => {
                     for packet in packets {
                         match packet {
-                            Packet::GameUpdateCommand(game, _) => {
+                            Packet::GameUpdateCommand(game, turn_result) => {
                                 let is_white = game.white_player_name
                                     == username().expect("must have username");
-                                self.board_renderer.set_flipped(!is_white);
-                                self.state = GameClientState::Playing(game, is_white);
+                                self.apply_update(game, is_white, turn_result.as_ref());
                             }
                             Packet::PerformActionResponse(state) => match state {
                                 PerformActionState::Done => {}

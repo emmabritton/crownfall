@@ -1,7 +1,7 @@
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::{BACKGROUND, SceneName, SceneResult};
 use game::ai::{DEFAULT_DEPTH, best_move};
-use game::{Cell, Game, GameState, PlayState, PlayerAction, PlayerKind};
+use game::{Cell, Game, GameState, Piece, PlayState, PlayerAction, PlayerKind, TurnResult};
 use pixels_graphics_lib::MouseData;
 use pixels_graphics_lib::buffer_graphics_lib::Graphics;
 use pixels_graphics_lib::prelude::*;
@@ -12,6 +12,7 @@ const HUMAN: PlayerKind = PlayerKind::White;
 const AI: PlayerKind = PlayerKind::Black;
 /// Small pause before the AI "moves" so its turn doesn't feel instantaneous.
 const AI_THINK_DELAY: f64 = 0.4;
+const MOVE_ANIMATION_DURATION: f64 = 0.25;
 
 struct DragState {
     origin: Cell,
@@ -19,10 +20,21 @@ struct DragState {
     pointer: Coord,
 }
 
+/// Animates the AI's piece sliding from `from` to `to` instead of it snapping
+/// straight into place.
+struct MoveAnimation {
+    piece: Piece,
+    from: Cell,
+    to: Cell,
+    pending: Game,
+    elapsed: f64,
+}
+
 pub struct AiGameScene {
     game: Game,
     drag: Option<DragState>,
     ai_timer: Option<Timer>,
+    animation: Option<MoveAnimation>,
     piece_renderer: PieceRenderer,
     board_renderer: BoardRenderer,
     highlight_image: IndexedImage,
@@ -34,6 +46,7 @@ impl AiGameScene {
             game: Game::default(),
             drag: None,
             ai_timer: None,
+            animation: None,
             piece_renderer: PieceRenderer::new(),
             board_renderer: BoardRenderer::new(BOARD_POS),
             highlight_image: IndexedImage::from_file_contents(include_bytes!(
@@ -42,6 +55,38 @@ impl AiGameScene {
             .unwrap()
             .0,
         })
+    }
+
+    /// Begin animating the AI's move rather than applying `next` immediately.
+    fn animate_or_apply(&mut self, next: Game, turn_result: Option<TurnResult>) {
+        let move_cells = turn_result.as_ref().and_then(move_cells);
+        if let Some((from, to)) = move_cells
+            && let Some(piece) = self.game.board.cells[from.index]
+        {
+            self.animation = Some(MoveAnimation {
+                piece,
+                from,
+                to,
+                pending: next,
+                elapsed: 0.0,
+            });
+        } else {
+            self.game = next;
+        }
+    }
+}
+
+/// Extracts the (from, to) cells of a move from a turn result, if it
+/// represents a piece moving on the board.
+fn move_cells(result: &TurnResult) -> Option<(Cell, Cell)> {
+    match result {
+        TurnResult::PieceMove { from, to, .. } => Some((*from, *to)),
+        TurnResult::Capture {
+            last_move_from,
+            last_move_to,
+            ..
+        } => Some((*last_move_from, *last_move_to)),
+        TurnResult::Victory { .. } => None,
     }
 }
 
@@ -61,11 +106,22 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
             if self.drag.as_ref().is_some_and(|d| d.origin.index == i) {
                 continue;
             }
+            if self.animation.as_ref().is_some_and(|a| a.from.index == i) {
+                continue;
+            }
             if let Some(cell) = cell {
                 let xy = self.board_renderer.pos_for(Cell::new_index(i));
                 let image = self.piece_renderer.image_for_piece(cell);
                 graphics.draw_indexed_image(xy, image);
             }
+        }
+        if let Some(anim) = &self.animation {
+            let t = (anim.elapsed / MOVE_ANIMATION_DURATION).clamp(0.0, 1.0);
+            let from = self.board_renderer.pos_for(anim.from);
+            let to = self.board_renderer.pos_for(anim.to);
+            let xy = from + (to - from) * t;
+            let image = self.piece_renderer.image_for_piece(&anim.piece);
+            graphics.draw_indexed_image(xy, image);
         }
         draw_status(&self.game, graphics);
         if let Some(drag) = &self.drag {
@@ -152,15 +208,22 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
         _: &FxHashSet<KeyCode>,
         _: &Window,
     ) -> SceneUpdateResult<SceneResult, SceneName> {
+        if let Some(anim) = &mut self.animation {
+            anim.elapsed += timing.fixed_time_step;
+            if anim.elapsed >= MOVE_ANIMATION_DURATION {
+                let anim = self.animation.take().unwrap();
+                self.game = anim.pending;
+            }
+        }
         if let Some(timer) = &mut self.ai_timer
             && timer.update(timing)
         {
             self.ai_timer = None;
             if is_ais_turn(&self.game)
                 && let Some(action) = best_move(&self.game, AI, DEFAULT_DEPTH)
-                && let Ok((next, _)) = self.game.clone().handle_player_action(action)
+                && let Ok((next, turn_result)) = self.game.clone().handle_player_action(action)
             {
-                self.game = next;
+                self.animate_or_apply(next, turn_result);
             }
         }
         Nothing
@@ -170,6 +233,7 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
         self.game = Game::default();
         self.drag = None;
         self.ai_timer = None;
+        self.animation = None;
     }
 }
 
