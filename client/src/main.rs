@@ -10,8 +10,8 @@ use anyhow::Result;
 use pixels_graphics_lib::prelude::*;
 use std::net::{SocketAddr, ToSocketAddrs};
 
-const WIDTH: usize = 600;
-const HEIGHT: usize = 600;
+const WIDTH: usize = 400;
+const HEIGHT: usize = 300;
 
 const BACKGROUND: Color = Color {
     r: 30,
@@ -63,7 +63,7 @@ fn main() -> Result<()> {
     };
 
     net::init(addr)?;
-    let window_prefs = WindowPreferences::new("com", "emmabritton", "crownfall", 1)?;
+    let window_prefs = WindowPreferences::new("com", "emmabritton", "crownfall", 2)?;
     let options = Options::default();
     let switcher: SceneSwitcher<SceneResult, SceneName> =
         |style, scene_stack, new_scene| match new_scene {

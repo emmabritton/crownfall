@@ -84,8 +84,8 @@ impl Scene<SceneResult, SceneName> for LoginScene {
     fn render(&self, graphics: &mut Graphics, mouse: &MouseData, _: &FxHashSet<KeyCode>) {
         graphics.clear(BACKGROUND);
 
-        graphics.draw_indexed_image(coord!(230, 32), &self.title_left);
-        graphics.draw_indexed_image(coord!(292, 32), &self.title_right);
+        graphics.draw_indexed_image(coord!(140, 32), &self.title_left);
+        graphics.draw_indexed_image(coord!(202, 32), &self.title_right);
 
         match &self.state {
             LoginState::Input => {

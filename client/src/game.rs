@@ -171,25 +171,32 @@ impl Scene<SceneResult, SceneName> for GameScene {
         let Some(drag) = self.drag.take() else {
             return;
         };
-        let GameClientState::Playing(web_game, _) = &self.state else {
+        let Some(target) = self.board_renderer.cell_at(mouse.xy) else {
+            return;
+        };
+        let GameClientState::Playing(web_game, _) = &mut self.state else {
             return;
         };
         let GameState::Playing(play_state) = &web_game.game.state else {
             return;
         };
-        let Some(target) = self.board_renderer.cell_at(mouse.xy) else {
-            return;
-        };
+        let player = play_state.player();
         if target != drag.origin && drag.valid_destinations.contains(&target) {
-            if let Err(e) = send(Packet::PerformActionRequest(
+            match send(Packet::PerformActionRequest(
                 web_game.id.clone(),
                 PlayerAction::Move {
-                    player: play_state.player(),
+                    player,
                     from: drag.origin,
                     to: target,
                 },
             )) {
-                self.state = GameClientState::Error(e.to_string())
+                // Optimistically apply the move locally so the piece doesn't snap
+                // back to its origin while waiting for the server's confirmation.
+                Ok(()) => {
+                    web_game.game.board.cells[target.index] =
+                        web_game.game.board.cells[drag.origin.index].take();
+                }
+                Err(e) => self.state = GameClientState::Error(e.to_string()),
             }
         }
     }
@@ -258,19 +265,14 @@ fn draw_status(
     graphics: &mut Graphics,
     last_move: &Option<TurnResult>,
 ) {
-    let pos = coord!(300, 16);
-    graphics.draw_text(
-        "Crownfall",
-        TextPos::px(pos),
-        (WHITE, PixelFont::Standard8x10),
-    );
+    let pos = coord!(260, 16);
     graphics.draw_text(
         &format!(
             "White: {} {}",
             web_game.white_player_name,
             if is_white { "(you)" } else { "" }
         ),
-        TextPos::px(pos + (0, 16)),
+        TextPos::px(pos),
         (WHITE, PixelFont::Standard6x7),
     );
     graphics.draw_text(
@@ -279,7 +281,7 @@ fn draw_status(
             web_game.black_player_name,
             if !is_white { "(you)" } else { "" }
         ),
-        TextPos::px(pos + (0, 26)),
+        TextPos::px(pos + (0, 10)),
         (WHITE, PixelFont::Standard6x7),
     );
     graphics.draw_text(

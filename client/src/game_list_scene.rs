@@ -49,7 +49,7 @@ impl GameListScene {
             reload_timer: Timer::new_with_delay(20.0, 10.0),
             join_timer: Timer::new_with_delay(10.0, 1.0),
             list_buttons,
-            create_button: Button::new(coord!(16, 500), "Create game", Some(100), &style.button),
+            create_button: Button::new(coord!(16, 270), "Create game", Some(100), &style.button),
             result: Nothing,
         })
     }
