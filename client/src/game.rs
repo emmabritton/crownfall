@@ -24,13 +24,18 @@ enum GameClientState {
     Error(String),
 }
 
+struct DragState {
+    origin: Cell,
+    valid_destinations: Vec<Cell>,
+    pointer: Coord,
+}
+
 pub struct GameScene {
     state: GameClientState,
     piece_renderer: PieceRenderer,
     board_renderer: BoardRenderer,
     timer: Timer,
-    highlight: Vec<Cell>,
-    highlight_origin: Cell,
+    drag: Option<DragState>,
     highlight_image: IndexedImage,
     last_move: Option<TurnResult>,
 }
@@ -43,8 +48,7 @@ impl GameScene {
             piece_renderer: PieceRenderer::new(),
             board_renderer: BoardRenderer::new(BOARD_POS),
             timer: Timer::new(1.0),
-            highlight: Vec::new(),
-            highlight_origin: Cell::new_index(0),
+            drag: None,
             highlight_image: IndexedImage::from_file_contents(include_bytes!(
                 "../resources/cell_valid.ici"
             ))
@@ -54,6 +58,11 @@ impl GameScene {
     }
 }
 
+fn is_players_turn(play_state: &PlayState, is_white: bool) -> bool {
+    (play_state.player() == PlayerKind::White && is_white)
+        || (play_state.player() == PlayerKind::Black && !is_white)
+}
+
 impl Scene<SceneResult, SceneName> for GameScene {
     fn render(&self, graphics: &mut Graphics, mouse: &MouseData, _: &FxHashSet<KeyCode>) {
         graphics.clear(BACKGROUND);
@@ -61,16 +70,27 @@ impl Scene<SceneResult, SceneName> for GameScene {
             GameClientState::Playing(web_game, is_white) => {
                 self.board_renderer.render(graphics);
                 for (i, cell) in web_game.game.board.cells.iter().enumerate() {
+                    if self.drag.as_ref().is_some_and(|d| d.origin.index == i) {
+                        continue;
+                    }
                     if let Some(cell) = cell {
-                        let xy = BOARD_POS + (coord!(Cell::new_index(i).to_coord()) * CELL_SIZE);
+                        let xy = self.board_renderer.pos_for(Cell::new_index(i));
                         let image = self.piece_renderer.image_for_piece(cell);
                         graphics.draw_indexed_image(xy, image);
                     }
                 }
                 draw_status(web_game, *is_white, graphics, &self.last_move);
-                for highlight in &self.highlight {
-                    let pos = (coord!(highlight.to_coord()) * CELL_SIZE) + BOARD_POS;
-                    graphics.draw_indexed_image(pos, &self.highlight_image);
+                if let Some(drag) = &self.drag {
+                    for destination in &drag.valid_destinations {
+                        let pos = self.board_renderer.pos_for(*destination);
+                        graphics.draw_indexed_image(pos, &self.highlight_image);
+                    }
+                    if let Some(piece) = web_game.game.board.cells[drag.origin.index] {
+                        let image = self.piece_renderer.image_for_piece(&piece);
+                        let half_cell = (CELL_SIZE / 2) as isize;
+                        let xy = drag.pointer - Coord::new(half_cell, half_cell);
+                        graphics.draw_indexed_image(xy, image);
+                    }
                 }
             }
             GameClientState::Error(err) => {
@@ -101,51 +121,75 @@ impl Scene<SceneResult, SceneName> for GameScene {
         }
     }
 
-    fn on_mouse_click(
+    fn on_mouse_down(
         &mut self,
-        down_at: Coord,
         mouse: &MouseData,
         mouse_button: MouseButton,
         _: &FxHashSet<KeyCode>,
     ) {
-        if mouse_button == MouseButton::Left {
-            match &self.state {
-                GameClientState::Playing(web_game, is_white) => match &web_game.game.state {
-                    GameState::Playing(play_state) => {
-                        let is_players_turn = (play_state.player() == PlayerKind::White
-                            && *is_white)
-                            || (play_state.player() == PlayerKind::Black && !is_white);
-                        if is_players_turn {
-                            let offset = mouse.xy - BOARD_POS;
-                            let grid_coord = offset / CELL_SIZE;
-                            if (0..=6).contains(&grid_coord.x) && (0..=6).contains(&grid_coord.y) {
-                                let cell =
-                                    Cell::new_coord(grid_coord.x as usize, grid_coord.y as usize);
-                                if let Some(piece) = web_game.game.board.cells[cell.index] {
-                                    if piece.player == play_state.player() {
-                                        self.highlight_origin = cell;
-                                        self.highlight =
-                                            web_game.game.board.get_valid_destinations_for(cell);
-                                    }
-                                } else if self.highlight.contains(&cell) {
-                                    self.highlight.clear();
-                                    if let Err(e) = send(Packet::PerformActionRequest(
-                                        web_game.id.clone(),
-                                        PlayerAction::Move {
-                                            player: play_state.player(),
-                                            from: self.highlight_origin,
-                                            to: cell,
-                                        },
-                                    )) {
-                                        self.state = GameClientState::Error(e.to_string())
-                                    }
-                                };
-                            }
-                        }
-                    }
-                    _ => {}
+        if mouse_button != MouseButton::Left {
+            return;
+        }
+        let GameClientState::Playing(web_game, is_white) = &self.state else {
+            return;
+        };
+        let GameState::Playing(play_state) = &web_game.game.state else {
+            return;
+        };
+        if !is_players_turn(play_state, *is_white) {
+            return;
+        }
+        let Some(cell) = self.board_renderer.cell_at(mouse.xy) else {
+            return;
+        };
+        if let Some(piece) = web_game.game.board.cells[cell.index] {
+            if piece.player == play_state.player() {
+                self.drag = Some(DragState {
+                    origin: cell,
+                    valid_destinations: web_game.game.board.get_valid_destinations_for(cell),
+                    pointer: mouse.xy,
+                });
+            }
+        }
+    }
+
+    fn on_mouse_drag(&mut self, mouse: &MouseData, _: &FxHashSet<KeyCode>) {
+        if let Some(drag) = &mut self.drag {
+            drag.pointer = mouse.xy;
+        }
+    }
+
+    fn on_mouse_up(
+        &mut self,
+        mouse: &MouseData,
+        mouse_button: MouseButton,
+        _: &FxHashSet<KeyCode>,
+    ) {
+        if mouse_button != MouseButton::Left {
+            return;
+        }
+        let Some(drag) = self.drag.take() else {
+            return;
+        };
+        let GameClientState::Playing(web_game, _) = &self.state else {
+            return;
+        };
+        let GameState::Playing(play_state) = &web_game.game.state else {
+            return;
+        };
+        let Some(target) = self.board_renderer.cell_at(mouse.xy) else {
+            return;
+        };
+        if target != drag.origin && drag.valid_destinations.contains(&target) {
+            if let Err(e) = send(Packet::PerformActionRequest(
+                web_game.id.clone(),
+                PlayerAction::Move {
+                    player: play_state.player(),
+                    from: drag.origin,
+                    to: target,
                 },
-                _ => {}
+            )) {
+                self.state = GameClientState::Error(e.to_string())
             }
         }
     }

@@ -1,5 +1,5 @@
-use game::{BOARD_LENGTH, Piece, PieceKind, PlayerKind};
-use pixels_graphics_lib::prelude::{Coord, Graphics, IndexedImage};
+use game::{BOARD_LENGTH, Cell, Piece, PieceKind, PlayerKind};
+use pixels_graphics_lib::prelude::{Coord, Graphics, IndexedImage, coord};
 
 pub const CELL_SIZE: usize = 32;
 
@@ -102,5 +102,18 @@ impl BoardRenderer {
                 graphics.draw_indexed_image(cell_pos, image);
             }
         }
+    }
+
+    pub fn cell_at(&self, xy: Coord) -> Option<Cell> {
+        let grid = (xy - self.pos) / CELL_SIZE;
+        if (0..BOARD_LENGTH as isize).contains(&grid.x) && (0..BOARD_LENGTH as isize).contains(&grid.y) {
+            Some(Cell::new_coord(grid.x as usize, grid.y as usize))
+        } else {
+            None
+        }
+    }
+
+    pub fn pos_for(&self, cell: Cell) -> Coord {
+        self.pos + coord!(cell.to_coord()) * CELL_SIZE
     }
 }
