@@ -4,27 +4,27 @@ A simple board game.
 
 ## Rules
 
-Crownfall is a two-player abstract strategy game played on a 7×7 board. Each player commands a Crown, five Knights, and four Spies, and must protect their own Crown while working to eliminate the opponent's forces.
+Crownfall is a two-player abstract strategy game played on a 7×7 board. Each player commands a Crown, six Knights, and three Spies, and must protect their own Crown while working to eliminate the opponent's forces.
 
 ### Components
 
 - **Board:** 7×7 grid, columns 1–7 and rows A–G
 - **Pieces (per player):**
     - 1 × Crown (👑)
-    - 5 × Knight (🛡️)
-    - 4 × Spy (🗡️)
+    - 6 × Knight (🛡️)
+    - 3 × Spy (🗡️)
 
 ### Setup
 
 |       | 1  | 2  | 3  | 4  | 5  | 6  | 7  |
 |-------|----|----|----|----|----|----|----|
-| **A** |    |    | 🛡️ | 👑 | 🛡️ |    |    |
-| **B** | 🗡️ | 🗡️ | 🛡️ | 🛡️ | 🛡️ | 🗡️ | 🗡️ |
+| **A** |    |    | 🗡️️ | 👑 | 🗡️️ |    |    |
+| **B** | 🛡️ | 🛡 | 🛡️ | 🗡️ | 🛡️ | 🛡️ | 🛡️ |
 | **C** |    |    |    |    |    |    |    |
 | **D** |    |    |    |    |    |    |    |
 | **E** |    |    |    |    |    |    |    |
-| **F** | 🗡️ | 🗡️ | 🛡️ | 🛡️ | 🛡️ | 🗡️ | 🗡️ |
-| **G** |    |    | 🛡️ | 👑 | 🛡️ |    |    |
+| **F** | 🛡️ | 🛡 | 🛡️ | 🗡️️ | 🛡️ | 🛡 | 🛡️ |
+| **G** |    |    | 🗡️️ | 👑 | 🗡️️ |    |    |
 
 Rows A–B belong to one player; rows F–G belong to the other.
 
@@ -41,7 +41,7 @@ White goes first.
 
 Two tiles are **adjacent** if they share an edge (orthogonal neighbors only (up, down, left, right)). Diagonal tiles are never adjacent.
 
-**Surrounded** means a piece has enemy pieces occupying exactly two of its orthogonally adjacent tiles, in any combination of positions (e.g., left+right, left+up, up+right, etc.) — not only opposite sides.
+**Surrounded** means a piece has enemy pieces occupying two of its orthogonally adjacent tiles that form a valid capturing pincer (see **Captures**), in any combination of positions (e.g., left+right, left+up, up+right, etc.) — not only opposite sides. Other enemy pieces also adjacent to the same tile do not prevent this.
 
 ### Captures
 
@@ -79,4 +79,4 @@ instead the spies capturing the crown takes priority and black wins.
 A player loses immediately if either condition is met:
 
 1. **Crown captured:** The Crown is surrounded by two enemy Spies, by two enemy Knights or by an enemy Knight and Crown. This check has the **highest priority** — if it is ever true, the game ends immediately before any other capture or condition is evaluated.
-2. **Attrition:** The player has one or fewer Spies **and** one or fewer Knights remaining.
+2. **Attrition:** The player has one or fewer Knights remaining.

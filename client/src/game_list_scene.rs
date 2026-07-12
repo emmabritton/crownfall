@@ -26,6 +26,7 @@ pub struct GameListScene {
     join_timer: Timer,
     list_buttons: Vec<Button>,
     create_button: Button,
+    ai_button: Button,
     result: SceneUpdateResult<SceneResult, SceneName>,
 }
 
@@ -50,6 +51,7 @@ impl GameListScene {
             join_timer: Timer::new_with_delay(10.0, 1.0),
             list_buttons,
             create_button: Button::new(coord!(16, 270), "Create game", Some(100), &style.button),
+            ai_button: Button::new(coord!(160, 270), "Play vs AI", Some(100), &style.button),
             result: Nothing,
         })
     }
@@ -92,6 +94,7 @@ impl Scene<SceneResult, SceneName> for GameListScene {
                     );
                 });
                 self.create_button.render(graphics, mouse);
+                self.ai_button.render(graphics, mouse);
                 for button in &self.list_buttons {
                     button.render(graphics, mouse);
                 }
@@ -133,6 +136,9 @@ impl Scene<SceneResult, SceneName> for GameListScene {
                     } else {
                         self.state = GameListState::Creating;
                     }
+                }
+                if self.ai_button.on_mouse_click(down_at, mouse.xy) {
+                    self.result = SceneUpdateResult::Push(false, SceneName::AiGame);
                 }
                 for (i, button) in self.list_buttons.iter_mut().enumerate() {
                     if button.on_mouse_click(down_at, mouse.xy)
@@ -187,6 +193,7 @@ impl Scene<SceneResult, SceneName> for GameListScene {
                     self.state = GameListState::PreLoad;
                 }
                 self.create_button.update(timing);
+                self.ai_button.update(timing);
                 for button in self.list_buttons.iter_mut() {
                     button.update(timing);
                 }

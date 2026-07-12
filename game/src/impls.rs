@@ -14,7 +14,7 @@ impl Default for BoardState {
                 None,
                 None,
                 Some(Piece {
-                    kind: PieceKind::Knight,
+                    kind: PieceKind::Spy,
                     player: PlayerKind::Black,
                 }),
                 Some(Piece {
@@ -22,19 +22,11 @@ impl Default for BoardState {
                     player: PlayerKind::Black,
                 }),
                 Some(Piece {
-                    kind: PieceKind::Knight,
+                    kind: PieceKind::Spy,
                     player: PlayerKind::Black,
                 }),
                 None,
                 None,
-                Some(Piece {
-                    kind: PieceKind::Spy,
-                    player: PlayerKind::Black,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Spy,
-                    player: PlayerKind::Black,
-                }),
                 Some(Piece {
                     kind: PieceKind::Knight,
                     player: PlayerKind::Black,
@@ -52,7 +44,15 @@ impl Default for BoardState {
                     player: PlayerKind::Black,
                 }),
                 Some(Piece {
-                    kind: PieceKind::Spy,
+                    kind: PieceKind::Knight,
+                    player: PlayerKind::Black,
+                }),
+                Some(Piece {
+                    kind: PieceKind::Knight,
+                    player: PlayerKind::Black,
+                }),
+                Some(Piece {
+                    kind: PieceKind::Knight,
                     player: PlayerKind::Black,
                 }),
                 None,
@@ -76,14 +76,6 @@ impl Default for BoardState {
                 None,
                 None,
                 None,
-                Some(Piece {
-                    kind: PieceKind::Spy,
-                    player: PlayerKind::White,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Spy,
-                    player: PlayerKind::White,
-                }),
                 Some(Piece {
                     kind: PieceKind::Knight,
                     player: PlayerKind::White,
@@ -101,13 +93,21 @@ impl Default for BoardState {
                     player: PlayerKind::White,
                 }),
                 Some(Piece {
-                    kind: PieceKind::Spy,
+                    kind: PieceKind::Knight,
+                    player: PlayerKind::White,
+                }),
+                Some(Piece {
+                    kind: PieceKind::Knight,
+                    player: PlayerKind::White,
+                }),
+                Some(Piece {
+                    kind: PieceKind::Knight,
                     player: PlayerKind::White,
                 }),
                 None,
                 None,
                 Some(Piece {
-                    kind: PieceKind::Knight,
+                    kind: PieceKind::Spy,
                     player: PlayerKind::White,
                 }),
                 Some(Piece {
@@ -115,7 +115,7 @@ impl Default for BoardState {
                     player: PlayerKind::White,
                 }),
                 Some(Piece {
-                    kind: PieceKind::Knight,
+                    kind: PieceKind::Spy,
                     player: PlayerKind::White,
                 }),
                 None,
@@ -193,19 +193,31 @@ impl BoardState {
             .count()
     }
 
-    /// Returns the two attacking cells surrounding `target` if exactly two of its
-    /// orthogonal neighbours are occupied by `attacker`'s pieces.
-    fn find_attacking_pair(&self, target: Cell, attacker: PlayerKind) -> Option<(Cell, Cell)> {
-        let mut attackers = Self::orthogonal_neighbours(target).into_iter().filter(
-            |neighbour| matches!(self.cells[neighbour.to_index()], Some(piece) if piece.player == attacker),
-        );
+    /// Finds a valid capturing pincer among `target`'s orthogonal neighbours occupied
+    /// by `attacker`. Extra attacker-owned pieces also adjacent to `target` (of any
+    /// kind) must not block a genuine Spy+Spy, Knight+Knight, or Knight+Crown pincer
+    /// formed by two of those neighbours.
+    fn find_attacking_pair(
+        &self,
+        target: Cell,
+        attacker: PlayerKind,
+    ) -> Option<((Cell, Cell), CaptureKind)> {
+        let attackers: Vec<Cell> = Self::orthogonal_neighbours(target)
+            .into_iter()
+            .filter(|neighbour| {
+                matches!(self.cells[neighbour.to_index()], Some(piece) if piece.player == attacker)
+            })
+            .collect();
 
-        let first = attackers.next()?;
-        let second = attackers.next()?;
-        if attackers.next().is_some() {
-            return None;
+        for i in 0..attackers.len() {
+            for j in (i + 1)..attackers.len() {
+                let pair = (attackers[i], attackers[j]);
+                if let Some(kind) = self.capture_kind(pair) {
+                    return Some((pair, kind));
+                }
+            }
         }
-        Some((first, second))
+        None
     }
 
     /// Determines which capture rule (if any) the attacking pair satisfies.
@@ -242,7 +254,7 @@ impl BoardState {
         match self.cells[at.to_index()] {
             Some(piece) if piece.player == mover && piece.kind != PieceKind::Crown => {
                 self.find_attacking_pair(at, mover.opposite())
-                    .and_then(|pair| self.capture_kind(pair))
+                    .map(|(_, kind)| kind)
                     == Some(CaptureKind::Spy)
             }
             _ => false,
@@ -255,10 +267,9 @@ impl BoardState {
     /// capture the same move might otherwise complete.
     fn check_own_crown_trap(&self, at: Cell, mover: PlayerKind) -> bool {
         match self.cells[at.to_index()] {
-            Some(piece) if piece.player == mover && piece.kind == PieceKind::Crown => self
-                .find_attacking_pair(at, mover.opposite())
-                .and_then(|pair| self.capture_kind(pair))
-                .is_some(),
+            Some(piece) if piece.player == mover && piece.kind == PieceKind::Crown => {
+                self.find_attacking_pair(at, mover.opposite()).is_some()
+            }
             _ => false,
         }
     }
@@ -271,8 +282,7 @@ impl BoardState {
                 if piece.player == attacker || piece.kind != PieceKind::Crown {
                     return None;
                 }
-                let attackers = self.find_attacking_pair(neighbour, attacker)?;
-                self.capture_kind(attackers)?;
+                self.find_attacking_pair(neighbour, attacker)?;
                 Some(neighbour)
             })
     }
@@ -289,8 +299,7 @@ impl BoardState {
                 if piece.player == attacker || piece.kind == PieceKind::Crown {
                     return None;
                 }
-                let attackers = self.find_attacking_pair(neighbour, attacker)?;
-                let kind = self.capture_kind(attackers)?;
+                let (attackers, kind) = self.find_attacking_pair(neighbour, attacker)?;
                 Some((neighbour, kind, attackers))
             })
             .collect()
@@ -298,7 +307,6 @@ impl BoardState {
 
     fn is_attrition_defeated(&self, player: PlayerKind) -> bool {
         self.piece_count(player, PieceKind::Knight) <= 1
-            && self.piece_count(player, PieceKind::Spy) <= 1
     }
 }
 
@@ -398,7 +406,7 @@ impl Game {
                     last_move_from: from,
                     last_move_to: to,
                     removed: to,
-                    second_attacker: attackers.1,
+                    second_attacker: attackers.0.1,
                 }),
             ));
         }
@@ -407,31 +415,27 @@ impl Game {
         if !captures.is_empty() {
             let mut turn_result = None;
             for (target, kind, attackers) in captures {
+                let target_kind =
+                    board.cells[target.to_index()].map(|target_piece| target_piece.kind);
                 board.cells[target.to_index()] = None;
                 let second_attacker = BoardState::other_attacker(attackers, to);
-                let captured_this = match kind {
-                    CaptureKind::Spy => TurnResult::Capture {
-                        player,
-                        last_move_from: from,
-                        last_move_to: to,
-                        removed: target,
-                        second_attacker,
-                    },
-                    CaptureKind::Knight => {
-                        let lost_knight = if piece.kind == PieceKind::Crown {
-                            second_attacker
-                        } else {
-                            to
-                        };
-                        board.cells[lost_knight.to_index()] = None;
-                        TurnResult::Capture {
-                            player,
-                            last_move_from: from,
-                            last_move_to: to,
-                            removed: target,
-                            second_attacker,
-                        }
-                    }
+                // The attacking player only loses one of their own knights when the
+                // *captured piece itself* was a Knight (README "Knight Capture") — a
+                // Knight+Knight/Knight+Crown pincer capturing a Spy carries no penalty.
+                if kind == CaptureKind::Knight && target_kind == Some(PieceKind::Knight) {
+                    let lost_knight = if piece.kind == PieceKind::Crown {
+                        second_attacker
+                    } else {
+                        to
+                    };
+                    board.cells[lost_knight.to_index()] = None;
+                }
+                let captured_this = TurnResult::Capture {
+                    player,
+                    last_move_from: from,
+                    last_move_to: to,
+                    removed: target,
+                    second_attacker,
                 };
                 turn_result.get_or_insert(captured_this);
             }

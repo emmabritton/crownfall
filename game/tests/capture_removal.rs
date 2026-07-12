@@ -102,6 +102,108 @@ fn knight_capture_removes_target_and_one_attacker() {
 }
 
 #[test]
+fn attrition_ignores_spy_count() {
+    // Black is reduced to one knight by this capture but still holds three
+    // spies. Attrition should trigger on knight count alone (README "Losing
+    // the Game") — spy count must not save (or condemn) a player.
+    let mut board = empty_board();
+    board.cells[24] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::Black,
+    });
+    board.cells[5] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::Black,
+    });
+    board.cells[6] = Some(Piece {
+        kind: PieceKind::Spy,
+        player: PlayerKind::Black,
+    });
+    board.cells[12] = Some(Piece {
+        kind: PieceKind::Spy,
+        player: PlayerKind::Black,
+    });
+    board.cells[13] = Some(Piece {
+        kind: PieceKind::Spy,
+        player: PlayerKind::Black,
+    });
+    board.cells[23] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+    board.cells[32] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+
+    let game = Game {
+        board,
+        state: GameState::Playing(PlayState::WaitingForInput {
+            player: PlayerKind::White,
+        }),
+    };
+
+    let (game, _result) = game
+        .handle_player_action(PlayerAction::Move {
+            player: PlayerKind::White,
+            from: Cell::new_index(32),
+            to: Cell::new_index(25),
+        })
+        .expect("valid move");
+
+    assert_eq!(
+        game.state,
+        GameState::Victory(PlayerKind::White),
+        "black should lose to attrition on knight count alone, despite still holding three spies"
+    );
+}
+
+#[test]
+fn knight_pincer_capturing_a_spy_loses_no_knight() {
+    // Two knights forming a valid pincer over a Spy (not a Knight) should capture
+    // the spy without the README's knight-removal penalty, which only applies
+    // when the captured piece was itself a Knight.
+    let mut board = empty_board();
+    board.cells[24] = Some(Piece {
+        kind: PieceKind::Spy,
+        player: PlayerKind::Black,
+    });
+    board.cells[23] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
+    board.cells[32] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+
+    let game = Game {
+        board,
+        state: GameState::Playing(PlayState::WaitingForInput {
+            player: PlayerKind::White,
+        }),
+    };
+
+    let (game, _result) = game
+        .handle_player_action(PlayerAction::Move {
+            player: PlayerKind::White,
+            from: Cell::new_index(32),
+            to: Cell::new_index(25),
+        })
+        .expect("valid move");
+
+    assert!(
+        game.board.cells[24].is_none(),
+        "captured spy should be removed from the board"
+    );
+    assert!(
+        game.board.cells[23].is_some() && game.board.cells[25].is_some(),
+        "no attacking knight should be lost when the captured piece was a Spy"
+    );
+}
+
+#[test]
 fn crown_partnered_knight_capture_never_loses_the_crown() {
     let mut board = empty_board();
     board.cells[24] = Some(Piece {
@@ -194,6 +296,55 @@ fn single_move_capturing_two_pieces_removes_both() {
         game.board.cells[38].is_none(),
         "target B should be removed from the board"
     );
+}
+
+#[test]
+fn extra_adjacent_attacker_does_not_block_a_valid_pincer() {
+    // A third attacker-owned piece (of any kind) is also adjacent to the target,
+    // alongside two knights that form a valid pincer. The extra piece must not
+    // prevent the knight capture from resolving.
+    let mut board = empty_board();
+    board.cells[23] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::Black,
+    });
+    board.cells[30] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+    board.cells[22] = Some(Piece {
+        kind: PieceKind::Spy,
+        player: PlayerKind::White,
+    });
+    board.cells[31] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
+
+    let game = Game {
+        board,
+        state: GameState::Playing(PlayState::WaitingForInput {
+            player: PlayerKind::White,
+        }),
+    };
+
+    let (game, result) = game
+        .handle_player_action(PlayerAction::Move {
+            player: PlayerKind::White,
+            from: Cell::new_index(31),
+            to: Cell::new_index(24),
+        })
+        .expect("valid move");
+
+    assert!(
+        game.board.cells[23].is_none(),
+        "the black knight should be captured despite a third white piece also being adjacent"
+    );
+    assert!(matches!(
+        result,
+        Some(TurnResult::Capture { removed, .. }) if removed == Cell::new_index(23)
+    ));
 }
 
 #[test]

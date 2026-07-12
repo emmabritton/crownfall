@@ -1,9 +1,11 @@
+mod ai_game;
 mod game;
 mod game_list_scene;
 mod game_renderer;
 mod login;
 mod net;
 
+use crate::ai_game::AiGameScene;
 use crate::game::GameScene;
 use crate::game_list_scene::GameListScene;
 use anyhow::Result;
@@ -76,6 +78,7 @@ fn main() -> Result<()> {
                 scene_stack.push(GameListScene::new(style));
                 scene_stack.push(GameScene::new(game_id));
             }
+            SceneName::AiGame => scene_stack.push(AiGameScene::new()),
         };
     run_scenes(
         WIDTH,
@@ -103,6 +106,7 @@ enum SceneName {
     GameList,
     Game(GameId),
     RejoinGame(GameId),
+    AiGame,
 }
 
 #[derive(Clone, Debug, PartialEq)]
