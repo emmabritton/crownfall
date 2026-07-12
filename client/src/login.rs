@@ -85,7 +85,7 @@ impl Scene<SceneResult, SceneName> for LoginScene {
         graphics.clear(BACKGROUND);
 
         graphics.draw_indexed_image(coord!(230, 32), &self.title_left);
-        graphics.draw_indexed_image(coord!(294, 32), &self.title_right);
+        graphics.draw_indexed_image(coord!(292, 32), &self.title_right);
 
         match &self.state {
             LoginState::Input => {

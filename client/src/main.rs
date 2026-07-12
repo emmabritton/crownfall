@@ -8,9 +8,7 @@ use crate::game::GameScene;
 use crate::game_list_scene::GameListScene;
 use anyhow::Result;
 use pixels_graphics_lib::prelude::*;
-use std::env::VarError;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::str::FromStr;
 
 const WIDTH: usize = 600;
 const HEIGHT: usize = 600;
@@ -45,12 +43,13 @@ use crate::login::LoginScene;
 use crate::net::send;
 use networking::packet::{GameId, Packet};
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
 
 fn main() -> Result<()> {
     if std::env::args().any(|x| x == "--reset") {
-        settings().data.username = None;
-        settings().save();
+        let mut prefs = settings();
+        prefs.data.username = None;
+        prefs.save();
+        return Ok(());
     }
 
     let addr = if std::env::var("LOCAL").is_ok() {
