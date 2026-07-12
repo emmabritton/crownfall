@@ -208,6 +208,7 @@ impl Scene<SceneResult, SceneName> for GameScene {
                             Packet::GameUpdateCommand(game, _) => {
                                 let is_white = game.white_player_name
                                     == username().expect("must have username");
+                                self.board_renderer.set_flipped(!is_white);
                                 self.state = GameClientState::Playing(game, is_white);
                             }
                             Packet::PerformActionResponse(state) => match state {
@@ -230,6 +231,7 @@ impl Scene<SceneResult, SceneName> for GameScene {
                                 NetGameState::Active(game) => {
                                     let is_white = game.white_player_name
                                         == username().expect("must have username");
+                                    self.board_renderer.set_flipped(!is_white);
                                     self.state = GameClientState::Playing(game, is_white);
                                 }
                                 NetGameState::InvalidGame => {

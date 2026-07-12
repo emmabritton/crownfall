@@ -70,6 +70,7 @@ pub struct BoardRenderer {
     dark: IndexedImage,
     light: IndexedImage,
     pos: Coord,
+    flipped: bool,
 }
 
 impl BoardRenderer {
@@ -86,6 +87,19 @@ impl BoardRenderer {
             dark: sqr_dark,
             light: sqr_light,
             pos,
+            flipped: false,
+        }
+    }
+
+    pub fn set_flipped(&mut self, flipped: bool) {
+        self.flipped = flipped;
+    }
+
+    fn flip(&self, x: usize, y: usize) -> (usize, usize) {
+        if self.flipped {
+            (BOARD_LENGTH - 1 - x, BOARD_LENGTH - 1 - y)
+        } else {
+            (x, y)
         }
     }
 
@@ -109,13 +123,16 @@ impl BoardRenderer {
         if (0..BOARD_LENGTH as isize).contains(&grid.x)
             && (0..BOARD_LENGTH as isize).contains(&grid.y)
         {
-            Some(Cell::new_coord(grid.x as usize, grid.y as usize))
+            let (x, y) = self.flip(grid.x as usize, grid.y as usize);
+            Some(Cell::new_coord(x, y))
         } else {
             None
         }
     }
 
     pub fn pos_for(&self, cell: Cell) -> Coord {
-        self.pos + coord!(cell.to_coord()) * CELL_SIZE
+        let (x, y) = cell.to_coord();
+        let (x, y) = self.flip(x, y);
+        self.pos + coord!(x, y) * CELL_SIZE
     }
 }
