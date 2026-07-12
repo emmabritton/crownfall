@@ -106,7 +106,9 @@ impl BoardRenderer {
 
     pub fn cell_at(&self, xy: Coord) -> Option<Cell> {
         let grid = (xy - self.pos) / CELL_SIZE;
-        if (0..BOARD_LENGTH as isize).contains(&grid.x) && (0..BOARD_LENGTH as isize).contains(&grid.y) {
+        if (0..BOARD_LENGTH as isize).contains(&grid.x)
+            && (0..BOARD_LENGTH as isize).contains(&grid.y)
+        {
             Some(Cell::new_coord(grid.x as usize, grid.y as usize))
         } else {
             None

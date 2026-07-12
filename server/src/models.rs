@@ -37,22 +37,22 @@ impl AppState {
     ) -> Option<ServerActiveGame> {
         let old_client_id = self.ids.insert(username.clone(), client_id);
 
-        if let Some(old_client_id) = old_client_id {
-            if old_client_id != client_id {
-                self.pending
-                    .retain(|_, game| game.white_player != old_client_id);
+        if let Some(old_client_id) = old_client_id
+            && old_client_id != client_id
+        {
+            self.pending
+                .retain(|_, game| game.white_player != old_client_id);
 
-                for game in self.games.values_mut() {
-                    if game.white_player == old_client_id {
-                        game.white_player = client_id;
-                    }
-                    if game.black_player == old_client_id {
-                        game.black_player = client_id;
-                    }
+            for game in self.games.values_mut() {
+                if game.white_player == old_client_id {
+                    game.white_player = client_id;
                 }
-
-                self.names.remove(&old_client_id);
+                if game.black_player == old_client_id {
+                    game.black_player = client_id;
+                }
             }
+
+            self.names.remove(&old_client_id);
         }
 
         self.names.insert(client_id, username);

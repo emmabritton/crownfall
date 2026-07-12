@@ -65,7 +65,7 @@ pub enum Packet {
 impl Packet {
     pub fn as_bytes(&self) -> Vec<u8> {
         serde_json::to_string(self)
-            .expect(&format!("{self:?} serialization failed"))
+            .unwrap_or_else(|_| panic!("{self:?} serialization failed"))
             .as_bytes()
             .to_vec()
     }

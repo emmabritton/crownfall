@@ -13,6 +13,7 @@ pub struct ServerApp {
     connections: HashMap<ClientId, Framed>,
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum ServerEvent {
     Connected(ClientId),
     Disconnected(ClientId),

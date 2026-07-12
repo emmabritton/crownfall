@@ -1,19 +1,13 @@
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::net::{poll, send};
-use crate::{username, SceneName, SceneResult, BACKGROUND, HEIGHT, WIDTH};
+use crate::{BACKGROUND, HEIGHT, SceneName, SceneResult, WIDTH, username};
 use game::{Cell, GameState, PlayState, PlayerAction, PlayerKind, TurnResult};
-use networking::error::NetworkingError;
 use networking::models::WebGame;
 use networking::packet::{GameId, NetGameState, Packet, PerformActionState};
 use pixels_graphics_lib::MouseData;
 use pixels_graphics_lib::buffer_graphics_lib::Graphics;
-use pixels_graphics_lib::prelude::{
-    BLACK, Coord, FxHashSet, IndexedImage, KeyCode, MouseButton, PixelFont, Positioning, RED,
-    Scene, SceneUpdateResult, TextPos, Timer, Timing, WHITE, Window, WrappingStrategy, coord,
-};
+use pixels_graphics_lib::prelude::*;
 use pixels_graphics_lib::scenes::SceneUpdateResult::Nothing;
-use reqwest::blocking::Client;
-use std::fmt::format;
 
 const BOARD_POS: Coord = Coord::new(16, 16);
 
@@ -34,7 +28,6 @@ pub struct GameScene {
     state: GameClientState,
     piece_renderer: PieceRenderer,
     board_renderer: BoardRenderer,
-    timer: Timer,
     drag: Option<DragState>,
     highlight_image: IndexedImage,
     last_move: Option<TurnResult>,
@@ -47,7 +40,6 @@ impl GameScene {
             last_move: None,
             piece_renderer: PieceRenderer::new(),
             board_renderer: BoardRenderer::new(BOARD_POS),
-            timer: Timer::new(1.0),
             drag: None,
             highlight_image: IndexedImage::from_file_contents(include_bytes!(
                 "../resources/cell_valid.ici"
@@ -64,7 +56,7 @@ fn is_players_turn(play_state: &PlayState, is_white: bool) -> bool {
 }
 
 impl Scene<SceneResult, SceneName> for GameScene {
-    fn render(&self, graphics: &mut Graphics, mouse: &MouseData, _: &FxHashSet<KeyCode>) {
+    fn render(&self, graphics: &mut Graphics, _: &MouseData, _: &FxHashSet<KeyCode>) {
         graphics.clear(BACKGROUND);
         match &self.state {
             GameClientState::Playing(web_game, is_white) => {
@@ -142,14 +134,14 @@ impl Scene<SceneResult, SceneName> for GameScene {
         let Some(cell) = self.board_renderer.cell_at(mouse.xy) else {
             return;
         };
-        if let Some(piece) = web_game.game.board.cells[cell.index] {
-            if piece.player == play_state.player() {
-                self.drag = Some(DragState {
-                    origin: cell,
-                    valid_destinations: web_game.game.board.get_valid_destinations_for(cell),
-                    pointer: mouse.xy,
-                });
-            }
+        if let Some(piece) = web_game.game.board.cells[cell.index]
+            && piece.player == play_state.player()
+        {
+            self.drag = Some(DragState {
+                origin: cell,
+                valid_destinations: web_game.game.board.get_valid_destinations_for(cell),
+                pointer: mouse.xy,
+            });
         }
     }
 
@@ -203,18 +195,19 @@ impl Scene<SceneResult, SceneName> for GameScene {
 
     fn update(
         &mut self,
-        timing: &Timing,
-        mouse: &MouseData,
+        _: &Timing,
+        _: &MouseData,
         _: &FxHashSet<KeyCode>,
         _: &Window,
     ) -> SceneUpdateResult<SceneResult, SceneName> {
         match &self.state {
-            GameClientState::Playing(web_game,_) => match poll() {
+            GameClientState::Playing(_, _) => match poll() {
                 Ok(packets) => {
                     for packet in packets {
                         match packet {
                             Packet::GameUpdateCommand(game, _) => {
-                                let is_white = game.white_player_name ==username().expect("must have username");
+                                let is_white = game.white_player_name
+                                    == username().expect("must have username");
                                 self.state = GameClientState::Playing(game, is_white);
                             }
                             Packet::PerformActionResponse(state) => match state {
@@ -235,7 +228,8 @@ impl Scene<SceneResult, SceneName> for GameScene {
                         if let Packet::PollGameResponse(state) = packet {
                             match state {
                                 NetGameState::Active(game) => {
-                                    let is_white = game.white_player_name ==username().expect("must have username");
+                                    let is_white = game.white_player_name
+                                        == username().expect("must have username");
                                     self.state = GameClientState::Playing(game, is_white);
                                 }
                                 NetGameState::InvalidGame => {
@@ -263,7 +257,7 @@ fn draw_status(
     web_game: &WebGame,
     is_white: bool,
     graphics: &mut Graphics,
-    last_move: &Option<TurnResult>,
+    _last_move: &Option<TurnResult>,
 ) {
     let pos = coord!(260, 16);
     graphics.draw_text(

@@ -85,10 +85,7 @@ impl Scene<SceneResult, SceneName> for GameListScene {
                     graphics.draw_text(
                         &format!(
                             "Created at {}",
-                            game.created
-                                .with_timezone(&Local::now().timezone())
-                                .time()
-                                .to_string()
+                            game.created.with_timezone(&Local::now().timezone()).time()
                         ),
                         TextPos::px(start + (130, line_height * i + 10)),
                         (WHITE, PixelFont::Standard6x7, Positioning::LeftBottom),
@@ -138,13 +135,13 @@ impl Scene<SceneResult, SceneName> for GameListScene {
                     }
                 }
                 for (i, button) in self.list_buttons.iter_mut().enumerate() {
-                    if button.on_mouse_click(down_at, mouse.xy) {
-                        if let Some(id) = game_ids.get(i) {
-                            if let Err(e) = send(Packet::JoinGameRequest(id.clone())) {
-                                self.state = GameListState::Error(format!("{:?}", e));
-                            } else {
-                                self.state = GameListState::Joining;
-                            }
+                    if button.on_mouse_click(down_at, mouse.xy)
+                        && let Some(id) = game_ids.get(i)
+                    {
+                        if let Err(e) = send(Packet::JoinGameRequest(id.clone())) {
+                            self.state = GameListState::Error(format!("{:?}", e));
+                        } else {
+                            self.state = GameListState::Joining;
                         }
                     }
                 }
@@ -225,10 +222,10 @@ impl Scene<SceneResult, SceneName> for GameListScene {
             },
             GameListState::WaitingForOtherPlayer(id) => {
                 let id = id.clone();
-                if self.join_timer.update(timing) {
-                    if let Err(e) = send(Packet::PollPendingGameRequest(id.clone())) {
-                        self.state = GameListState::Error(format!("{:?}", e));
-                    }
+                if self.join_timer.update(timing)
+                    && let Err(e) = send(Packet::PollPendingGameRequest(id.clone()))
+                {
+                    self.state = GameListState::Error(format!("{:?}", e));
                 }
                 match poll() {
                     Ok(packets) => {

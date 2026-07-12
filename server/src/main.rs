@@ -1,6 +1,5 @@
 mod game_server;
 mod models;
-mod timing;
 
 use crate::game_server::GameServer;
 use crate::models::AppState;

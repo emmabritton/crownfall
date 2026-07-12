@@ -1,6 +1,5 @@
 use crate::net::{poll, send};
 use crate::{BACKGROUND, HEIGHT, SceneName, SceneResult, Settings, WIDTH};
-use networking::error::NetworkingError;
 use networking::packet::Packet;
 use pixels_graphics_lib::prelude::*;
 use pixels_graphics_lib::scenes::SceneUpdateResult::Nothing;
