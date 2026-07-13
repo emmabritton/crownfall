@@ -4,8 +4,10 @@
 //! win rates, how games end, and game length. Run with:
 //!   cargo run --package game --example simulate --release
 
-use game::ai;
-use game::{Cell, DrawReason, Game, GameState, PlayState, PlayerAction, PlayerKind, TurnResult};
+use eb_crownfall_engine::ai;
+use eb_crownfall_engine::{
+    Cell, DrawReason, Game, GameState, PlayState, PlayerAction, PlayerKind, TurnResult,
+};
 
 /// Small deterministic xorshift64 PRNG so results are reproducible from a seed
 /// without pulling in a `rand` dependency for a one-off analysis tool.

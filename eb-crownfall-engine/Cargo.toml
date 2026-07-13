@@ -1,9 +1,10 @@
 [package]
-name = "game"
+name = "eb-crownfall-engine"
 version.workspace = true
 authors.workspace = true
 description.workspace = true
 edition.workspace = true
+publish = true
 
 [dependencies]
 # no_std + alloc: this crate has no hard std dependency, so its own deps are
@@ -12,8 +13,8 @@ edition.workspace = true
 # this workspace's build, but `game` alone doesn't require it). Declared
 # directly rather than via `workspace = true` — Cargo forbids a member
 # overriding `default-features` on an inherited dependency.
-serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
-serde-big-array.workspace = true
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"], optional = true }
+serde-big-array = { version = "0.5" , optional = true }
 thiserror = { version = "2.0", default-features = false }
 log = { version = "0.4", default-features = false, optional = true }
 
@@ -22,3 +23,4 @@ log = { version = "0.4", default-features = false, optional = true }
 # unless this is enabled, so the `log` dependency is never pulled in for
 # std-less consumers (e.g. GBA) that don't opt in.
 log = ["dep:log"]
+serde = ["dep:serde", "serde-big-array"]

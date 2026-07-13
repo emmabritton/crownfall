@@ -110,19 +110,61 @@ impl Default for BoardState {
         BoardState {
             cells: [
                 // Row A (y=0)
-                None, None, p(Spy, Black), p(Crown, Black), p(Spy, Black), None, None,
+                None,
+                None,
+                p(Spy, Black),
+                p(Crown, Black),
+                p(Spy, Black),
+                None,
+                None,
                 // Row B (y=1)
-                p(Knight, Black), None, p(Knight, Black), p(Spy, Black), p(Knight, Black), None, p(Knight, Black),
+                p(Knight, Black),
+                None,
+                p(Knight, Black),
+                p(Spy, Black),
+                p(Knight, Black),
+                None,
+                p(Knight, Black),
                 // Row C (y=2)
-                None, p(Knight, Black), None, None, None, p(Knight, Black), None,
+                None,
+                p(Knight, Black),
+                None,
+                None,
+                None,
+                p(Knight, Black),
+                None,
                 // Row D (y=3)
-                None, None, None, None, None, None, None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
                 // Row E (y=4)
-                None, p(Knight, White), None, None, None, p(Knight, White), None,
+                None,
+                p(Knight, White),
+                None,
+                None,
+                None,
+                p(Knight, White),
+                None,
                 // Row F (y=5)
-                p(Knight, White), None, p(Knight, White), p(Spy, White), p(Knight, White), None, p(Knight, White),
+                p(Knight, White),
+                None,
+                p(Knight, White),
+                p(Spy, White),
+                p(Knight, White),
+                None,
+                p(Knight, White),
                 // Row G (y=6)
-                None, None, p(Spy, White), p(Crown, White), p(Spy, White), None, None,
+                None,
+                None,
+                p(Spy, White),
+                p(Crown, White),
+                p(Spy, White),
+                None,
+                None,
             ],
         }
     }
@@ -255,8 +297,8 @@ impl BoardState {
                 len += 1;
             }
         }
-        for &neighbour in tables::KNIGHT_ARCS[attacker.opposite() as usize][target.to_index()]
-            .as_slice()
+        for &neighbour in
+            tables::KNIGHT_ARCS[attacker.opposite() as usize][target.to_index()].as_slice()
         {
             if matches!(self.cells[neighbour as usize], Some(piece) if piece.player == attacker && piece.kind == PieceKind::Knight)
             {
@@ -303,8 +345,7 @@ impl BoardState {
         let mut attackers = [0u8; 5];
         let mut len = 0;
         for &neighbour in tables::ORTHO[target.to_index()].as_slice() {
-            if matches!(self.cells[neighbour as usize], Some(piece) if piece.player == attacker)
-            {
+            if matches!(self.cells[neighbour as usize], Some(piece) if piece.player == attacker) {
                 attackers[len] = neighbour;
                 len += 1;
             }
@@ -350,10 +391,9 @@ impl BoardState {
     /// capture the same move might otherwise complete.
     fn check_own_crown_trap(&self, at: Cell, mover: PlayerKind) -> bool {
         match self.cells[at.to_index()] {
-            Some(piece) if piece.player == mover && piece.kind == PieceKind::Crown => {
-                self.find_crown_attacking_pair(at, mover.opposite(), at)
-                    .is_some()
-            }
+            Some(piece) if piece.player == mover && piece.kind == PieceKind::Crown => self
+                .find_crown_attacking_pair(at, mover.opposite(), at)
+                .is_some(),
             _ => false,
         }
     }
@@ -526,9 +566,7 @@ impl Game {
             GameState::Draw(_) => return Err(GameError::GameOver(action.player())),
         }
         match action {
-            PlayerAction::Move { player, from, to } => {
-                self.apply_move(player, from, to, log_moves)
-            }
+            PlayerAction::Move { player, from, to } => self.apply_move(player, from, to, log_moves),
             PlayerAction::KnightRemoval { player, at } => self.apply_knight_removal(player, at),
             PlayerAction::Surrender { player } => {
                 self.state = GameState::Victory(player.opposite());

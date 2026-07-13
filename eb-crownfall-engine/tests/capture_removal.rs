@@ -1,4 +1,4 @@
-use game::*;
+use eb_crownfall_engine::*;
 
 fn empty_board() -> BoardState {
     BoardState {
@@ -888,7 +888,10 @@ fn crown_capture_needs_no_knight_arc_any_two_adjacent_sides_count() {
         GameState::Victory(PlayerKind::White),
         "two knights on any two of the crown's sides, direct or beside, should capture it"
     );
-    assert!(game.board.cells[24].is_none(), "the crown should be removed");
+    assert!(
+        game.board.cells[24].is_none(),
+        "the crown should be removed"
+    );
     assert!(
         matches!(result, Some(TurnResult::Victory { player: PlayerKind::White, surrounded_crown }) if surrounded_crown == Cell::new_index(24))
     );
@@ -937,7 +940,10 @@ fn crown_capture_via_a_knights_diagonal_reach_when_that_knight_just_moved() {
         GameState::Victory(PlayerKind::White),
         "a Knight moving into a diagonal-forward cell of the Crown should complete the pincer"
     );
-    assert!(game.board.cells[24].is_none(), "the crown should be removed");
+    assert!(
+        game.board.cells[24].is_none(),
+        "the crown should be removed"
+    );
     assert!(
         matches!(result, Some(TurnResult::Victory { player: PlayerKind::White, surrounded_crown }) if surrounded_crown == Cell::new_index(24))
     );

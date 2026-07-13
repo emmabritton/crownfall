@@ -37,16 +37,13 @@ pub(crate) static ORTHO: [CellList; CELL_COUNT] = build_ortho(None);
 /// Legal Knight move destinations per cell: orthogonal neighbours minus the
 /// backward one. Indexed by `player as usize` (White = 0, Black = 1); White
 /// advances toward y=0 so its backward neighbour is down (+y), Black's is up.
-pub(crate) static KNIGHT_MOVES: [[CellList; CELL_COUNT]; 2] = [
-    build_ortho(Some(Skip::Down)),
-    build_ortho(Some(Skip::Up)),
-];
+pub(crate) static KNIGHT_MOVES: [[CellList; CELL_COUNT]; 2] =
+    [build_ortho(Some(Skip::Down)), build_ortho(Some(Skip::Up))];
 
 /// A Knight's forward capture arc per cell: the (up to) 3 cells in the row
 /// ahead of it — forward-left, straight forward, forward-right. Indexed by
 /// `player as usize` (White = 0, Black = 1).
-pub(crate) static KNIGHT_ARCS: [[CellList; CELL_COUNT]; 2] =
-    [build_arcs(false), build_arcs(true)];
+pub(crate) static KNIGHT_ARCS: [[CellList; CELL_COUNT]; 2] = [build_arcs(false), build_arcs(true)];
 
 /// Manhattan distance between every pair of cells, indexed `[a][b]`.
 pub(crate) static DIST: [[u8; CELL_COUNT]; CELL_COUNT] = build_dist();

@@ -1,4 +1,4 @@
-use game::{BOARD_LENGTH, Cell, Piece, PieceKind, PlayerKind};
+use eb_crownfall_engine::{BOARD_LENGTH, Cell, Piece, PieceKind, PlayerKind};
 use pixels_graphics_lib::prelude::{Coord, Graphics, IndexedImage, coord};
 
 pub const CELL_SIZE: usize = 32;

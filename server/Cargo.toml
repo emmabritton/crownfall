@@ -7,7 +7,7 @@ edition.workspace = true
 
 [dependencies]
 serde.workspace = true
-game = {path = "../game"}
+eb-crownfall-engine = {path = "../eb-crownfall-engine", features = ["log" , "serde"]}
 networking = {path = "../networking"}
 uuid.workspace = true
 chrono.workspace = true

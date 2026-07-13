@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use game::Game;
+use eb_crownfall_engine::Game;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

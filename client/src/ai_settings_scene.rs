@@ -1,13 +1,13 @@
 use crate::BACKGROUND;
 use crate::{SceneName, SceneResult};
-use game::ai::{Difficulty, Personality};
+use eb_crownfall_engine::ai::{Difficulty, Personality};
 use pixels_graphics_lib::prelude::SceneUpdateResult::Nothing;
 use pixels_graphics_lib::prelude::*;
+use pixels_graphics_lib::ui::PixelView;
 use pixels_graphics_lib::ui::button::Button;
 use pixels_graphics_lib::ui::helpers::ToggleButtonGroup;
 use pixels_graphics_lib::ui::styles::UiStyle;
 use pixels_graphics_lib::ui::toggle_button::ToggleButton;
-use pixels_graphics_lib::ui::PixelView;
 
 const DIFFICULTIES: [(Difficulty, &str); 4] = [
     (Difficulty::Easy, "Easy"),

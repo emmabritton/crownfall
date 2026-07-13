@@ -1,6 +1,6 @@
 use crate::error::NetworkingError;
 use crate::models::{PendingGame, WebGame};
-use game::{PlayerAction, TurnResult};
+use eb_crownfall_engine::{PlayerAction, TurnResult};
 use serde::{Deserialize, Serialize};
 
 pub type GameId = String;

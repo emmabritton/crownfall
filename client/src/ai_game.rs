@@ -1,7 +1,9 @@
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::{BACKGROUND, SceneName, SceneResult};
-use game::ai::{Difficulty, Personality, best_move};
-use game::{Cell, Game, GameState, Piece, PlayState, PlayerAction, PlayerKind, TurnResult};
+use eb_crownfall_engine::ai::{Difficulty, Personality, best_move};
+use eb_crownfall_engine::{
+    Cell, Game, GameState, Piece, PlayState, PlayerAction, PlayerKind, TurnResult,
+};
 use pixels_graphics_lib::MouseData;
 use pixels_graphics_lib::buffer_graphics_lib::Graphics;
 use pixels_graphics_lib::prelude::*;
@@ -254,7 +256,7 @@ fn draw_status(game: &Game, graphics: &mut Graphics) {
         TextPos::px(pos + (0, 10)),
         (WHITE, PixelFont::Standard6x7),
     );
-    
+
     graphics.draw_text(
         &format!("{} turns remaining", game.turns_remaining()),
         TextPos::px(pos + (0, 40)),

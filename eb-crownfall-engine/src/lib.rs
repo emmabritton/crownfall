@@ -14,10 +14,13 @@ pub mod prelude {
 }
 
 use alloc::vec::Vec;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use serde_big_array::BigArray;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PieceKind {
     Crown,
     Knight,
@@ -28,7 +31,8 @@ pub const BOARD_LENGTH: usize = 7;
 
 pub const BOARD_SIZE: (usize, usize) = (BOARD_LENGTH, BOARD_LENGTH);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PlayState {
     WaitingForInput {
         player: PlayerKind,
@@ -39,14 +43,16 @@ pub enum PlayState {
     },
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum GameState {
     Playing(PlayState),
     Victory(PlayerKind),
     Draw(DrawReason),
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum DrawReason {
     /// The same position (board + player to move) occurred three times.
     Repetition,
@@ -70,33 +76,37 @@ impl DrawReason {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Piece {
     pub kind: PieceKind,
     pub player: PlayerKind,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BoardState {
-    #[serde(with = "BigArray")]
+    #[cfg_attr(feature = "serde", serde(with = "BigArray"))]
     pub cells: [Option<Piece>; BOARD_SIZE.0 * BOARD_SIZE.1],
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Game {
     pub board: BoardState,
     pub state: GameState,
     /// Hashes of past positions (board + player to move), used to detect
     /// threefold repetition. Grows for the lifetime of the game.
-    #[serde(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub history: Vec<u64>,
     /// Turns played since the last capture, used for the no-progress draw
     /// rule. Reset to 0 on every capture.
-    #[serde(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub moves_since_capture: u16,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Cell {
     pub index: usize,
 }
@@ -122,13 +132,15 @@ impl Cell {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PlayerKind {
     White,
     Black,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PlayerAction {
     Move {
         player: PlayerKind,
@@ -144,7 +156,8 @@ pub enum PlayerAction {
     },
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TurnResult {
     PieceMove {
         player: PlayerKind,

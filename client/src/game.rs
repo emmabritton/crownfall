@@ -1,7 +1,9 @@
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::net::{poll, send};
 use crate::{BACKGROUND, HEIGHT, SceneName, SceneResult, WIDTH, username};
-use game::{Cell, GameState, Piece, PlayState, PlayerAction, PlayerKind, TurnResult};
+use eb_crownfall_engine::{
+    Cell, GameState, Piece, PlayState, PlayerAction, PlayerKind, TurnResult,
+};
 use networking::models::WebGame;
 use networking::packet::{GameId, NetGameState, Packet, PerformActionState};
 use pixels_graphics_lib::MouseData;

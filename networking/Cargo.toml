@@ -6,7 +6,7 @@ authors.workspace = true
 description.workspace = true
 
 [dependencies]
-game = {path = "../game"}
+eb-crownfall-engine = {path = "../eb-crownfall-engine", features = ["log" , "serde"]}
 serde.workspace = true
 chrono.workspace = true
 local-ip-address.workspace = true

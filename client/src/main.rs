@@ -10,7 +10,7 @@ use crate::ai_game::AiGameScene;
 use crate::ai_settings_scene::AiSettingsScene;
 use crate::game::GameScene;
 use crate::game_list_scene::GameListScene;
-use ::game::ai::{Difficulty, Personality};
+use ::eb_crownfall_engine::ai::{Difficulty, Personality};
 use anyhow::Result;
 use pixels_graphics_lib::prelude::*;
 use std::net::{SocketAddr, ToSocketAddrs};
