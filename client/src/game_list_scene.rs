@@ -138,7 +138,7 @@ impl Scene<SceneResult, SceneName> for GameListScene {
                     }
                 }
                 if self.ai_button.on_mouse_click(down_at, mouse.xy) {
-                    self.result = SceneUpdateResult::Push(false, SceneName::AiGame);
+                    self.result = SceneUpdateResult::Push(false, SceneName::AiSettings);
                 }
                 for (i, button) in self.list_buttons.iter_mut().enumerate() {
                     if button.on_mouse_click(down_at, mouse.xy)

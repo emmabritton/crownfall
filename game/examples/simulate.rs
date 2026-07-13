@@ -122,7 +122,7 @@ fn play_game(
             } else {
                 black_depth
             };
-            match ai::best_move(&game, player, depth) {
+            match ai::best_move(&game, player, depth, ai::Personality::Balanced) {
                 Some(action) => action,
                 None => {
                     return GameResult {

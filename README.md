@@ -19,14 +19,14 @@ Crownfall is a two-player abstract strategy game played on a 7×7 board. Each pl
 |       | 1  | 2  | 3  | 4  | 5  | 6  | 7  |
 |-------|----|----|----|----|----|----|----|
 | **A** |    |    | 🗡️️ | 👑 | 🗡️️ |    |    |
-| **B** | 🛡️ | 🛡 | 🛡️ | 🗡️ | 🛡️ | 🛡️ | 🛡️ |
-| **C** |    |    |    |    |    |    |    |
+| **B** | 🛡️ |    | 🛡️ | 🗡️ | 🛡️ |    | 🛡️ |
+| **C** |    | 🛡️ |    |    |    | 🛡️ |    |
 | **D** |    |    |    |    |    |    |    |
-| **E** |    |    |    |    |    |    |    |
-| **F** | 🛡️ | 🛡 | 🛡️ | 🗡️️ | 🛡️ | 🛡 | 🛡️ |
+| **E** |    | 🛡️ |    |    |    | 🛡️ |    |
+| **F** | 🛡️ |    | 🛡️ | 🗡️️ | 🛡️ |    | 🛡️ |
 | **G** |    |    | 🗡️️ | 👑 | 🗡️️ |    |    |
 
-Rows A–B belong to one player; rows F–G belong to the other.
+Rows A–C belong to one player; rows E–G belong to the other. Each side's 6 Knights are split across two rows (4 nearest their own Crown, 2 one row further forward, offset into the gaps) rather than one solid line — this staggering keeps the two sides' Knights from meeting as a single contiguous wall, which would otherwise put every Knight in a mutual pincer simultaneously on first contact.
 
 ### Turn Structure
 
@@ -35,7 +35,7 @@ White goes first.
 1. Players alternate turns.
 2. On a turn, a player must move exactly one of their own pieces one tile:
    - **Crown and Spies** move in an orthogonal direction (up, down, left, or right). Diagonal moves are not permitted.
-   - **Knights** move forward-only, toward the opponent's starting rows, to any of the (up to) 3 cells in the row directly ahead of them: straight forward, forward-left, or forward-right. Knights cannot move sideways or backward.
+   - **Knights** move orthogonally like every other piece, except they can never move backward (away from the opponent's starting rows) — forward, left, or right only. Diagonal moves are never a legal Knight move; the diagonal-forward shape instead defines their Knight Capture reach (see **Captures**).
 3. A piece may not move onto an occupied tile or off the board.
 4. After a move, any captures that result from the move are resolved immediately (see **Captures**). Capture adjacency is always orthogonal (see **Adjacency**), regardless of how a piece moved to get there.
 
@@ -49,7 +49,7 @@ Two tiles are **adjacent** if they share an edge (orthogonal neighbors only (up,
 
 #### Knight Capture
 
-Occurs when a knight is moved next to an enemy piece that already has 1 knight adjacent. The captured piece is removed, and if the enemy piece was a knight the attacking player must remove one of their knights.
+Occurs when a knight is moved into position to pincer an enemy piece alongside a second attacker that's already in place. Unlike a plain orthogonal pincer, a Knight attacker only counts if the target falls within that Knight's forward-facing arc — directly ahead, or diagonally ahead-left/ahead-right — from the Knight's own cell; a Knight standing beside or behind the target does not count. A Crown standing in for a Knight is not bound by this arc and can be on any orthogonal side of the target. The captured piece is removed, and if the enemy piece was a knight the attacking player must remove one of their knights.
 
 #### Spy Capture
 

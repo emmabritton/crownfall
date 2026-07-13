@@ -65,119 +65,40 @@ fn resolve_continuation(
     }
 }
 
+/// Shorthand for building `BoardState::default`'s initial layout.
+fn p(kind: PieceKind, player: PlayerKind) -> Option<Piece> {
+    Some(Piece { kind, player })
+}
+
 impl Default for BoardState {
+    /// Each side's 6 Knights are staggered across two rows (4 on the row
+    /// nearest their own Crown, 2 one row further forward, offset into the
+    /// gaps) rather than one solid contiguous line. A solid 6-wide line
+    /// meeting an identical enemy line head-on puts every Knight in a
+    /// mutual forward-arc pincer simultaneously, cascading into a
+    /// same-turn massacre that trades away most of both sides' Knights
+    /// before the game has really started. Staggering means only the 2
+    /// advanced Knights per side can meet that early, keeping the rest in
+    /// play for later.
     fn default() -> BoardState {
+        use PieceKind::{Crown, Knight, Spy};
+        use PlayerKind::{Black, White};
         BoardState {
             cells: [
-                None,
-                None,
-                Some(Piece {
-                    kind: PieceKind::Spy,
-                    player: PlayerKind::Black,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Crown,
-                    player: PlayerKind::Black,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Spy,
-                    player: PlayerKind::Black,
-                }),
-                None,
-                None,
-                Some(Piece {
-                    kind: PieceKind::Knight,
-                    player: PlayerKind::Black,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Knight,
-                    player: PlayerKind::Black,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Knight,
-                    player: PlayerKind::Black,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Spy,
-                    player: PlayerKind::Black,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Knight,
-                    player: PlayerKind::Black,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Knight,
-                    player: PlayerKind::Black,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Knight,
-                    player: PlayerKind::Black,
-                }),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(Piece {
-                    kind: PieceKind::Knight,
-                    player: PlayerKind::White,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Knight,
-                    player: PlayerKind::White,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Knight,
-                    player: PlayerKind::White,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Spy,
-                    player: PlayerKind::White,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Knight,
-                    player: PlayerKind::White,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Knight,
-                    player: PlayerKind::White,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Knight,
-                    player: PlayerKind::White,
-                }),
-                None,
-                None,
-                Some(Piece {
-                    kind: PieceKind::Spy,
-                    player: PlayerKind::White,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Crown,
-                    player: PlayerKind::White,
-                }),
-                Some(Piece {
-                    kind: PieceKind::Spy,
-                    player: PlayerKind::White,
-                }),
-                None,
-                None,
+                // Row A (y=0)
+                None, None, p(Spy, Black), p(Crown, Black), p(Spy, Black), None, None,
+                // Row B (y=1)
+                p(Knight, Black), None, p(Knight, Black), p(Spy, Black), p(Knight, Black), None, p(Knight, Black),
+                // Row C (y=2)
+                None, p(Knight, Black), None, None, None, p(Knight, Black), None,
+                // Row D (y=3)
+                None, None, None, None, None, None, None,
+                // Row E (y=4)
+                None, p(Knight, White), None, None, None, p(Knight, White), None,
+                // Row F (y=5)
+                p(Knight, White), None, p(Knight, White), p(Spy, White), p(Knight, White), None, p(Knight, White),
+                // Row G (y=6)
+                None, None, p(Spy, White), p(Crown, White), p(Spy, White), None, None,
             ],
         }
     }
@@ -219,15 +140,17 @@ impl PlayState {
 
 impl BoardState {
     /// Legal move destinations for the piece at `cell`. Knights move
-    /// forward-only, to any of the (up to) 3 empty cells in the row ahead of
-    /// them; every other piece moves orthogonally in any direction.
+    /// orthogonally like every other piece, except they may never move
+    /// backward (away from the opponent's starting rows) — forward, left,
+    /// and right only. Their old diagonal-forward reach is now the shape of
+    /// their *capture* threat instead (see `knight_forward_neighbours`).
     pub fn get_valid_destinations_for(&self, cell: Cell) -> Vec<Cell> {
         let Some(piece) = self.cells[cell.to_index()] else {
             return Vec::new();
         };
 
         let candidates = if piece.kind == PieceKind::Knight {
-            Self::knight_forward_neighbours(cell, piece.player)
+            Self::knight_move_neighbours(cell, piece.player)
         } else {
             Self::orthogonal_neighbours(cell)
         };
@@ -266,9 +189,28 @@ impl BoardState {
         }
     }
 
+    /// The orthogonal neighbours of a Knight's cell, excluding the backward
+    /// one (away from the opponent's starting rows) — forward, left, and
+    /// right are legal Knight moves, matching every other piece except for
+    /// that one missing direction.
+    fn knight_move_neighbours(cell: Cell, player: PlayerKind) -> Vec<Cell> {
+        let (x, y) = cell.to_coord();
+        let backward_y = y as isize - Self::knight_forward_dir(player);
+        Self::orthogonal_neighbours(cell)
+            .into_iter()
+            .filter(|neighbour| {
+                let (nx, ny) = neighbour.to_coord();
+                !(nx == x && ny as isize == backward_y)
+            })
+            .collect()
+    }
+
     /// The (up to) 3 cells in the row ahead of a Knight: straight forward,
-    /// forward-left, and forward-right. Unlike every other piece, this
-    /// crosses diagonally — occupancy is filtered by the caller.
+    /// forward-left, and forward-right. This is no longer a movement shape —
+    /// it's the Knight's *capture* reach: a Knight can only take part in a
+    /// Knight Capture pincer against a target that falls within this arc
+    /// from its own cell (a Knight directly beside or behind a target does
+    /// not count, only ahead or diagonally ahead of it).
     fn knight_forward_neighbours(cell: Cell, player: PlayerKind) -> Vec<Cell> {
         let (x, y) = cell.to_coord();
         let forward_y = y as isize + Self::knight_forward_dir(player);
@@ -294,21 +236,29 @@ impl BoardState {
             .count()
     }
 
-    /// Finds a valid capturing pincer among `target`'s orthogonal neighbours occupied
-    /// by `attacker`. Extra attacker-owned pieces also adjacent to `target` (of any
-    /// kind) must not block a genuine Spy+Spy, Knight+Knight, or Knight+Crown pincer
-    /// formed by two of those neighbours.
+    /// Finds a valid capturing pincer against `target` occupied by `attacker`-owned
+    /// pieces. Crown and Spy attackers only need plain orthogonal adjacency (any of
+    /// the 4 sides); Knight attackers additionally need `target` to fall within their
+    /// own forward arc — a Knight standing beside or behind `target` cannot form a
+    /// Knight Capture pincer, only one standing ahead of or diagonally ahead of it can
+    /// (see `knight_forward_neighbours`). Extra attacker-owned pieces also adjacent to
+    /// `target` (of any kind) must not block a genuine pincer formed by two others.
     fn find_attacking_pair(
         &self,
         target: Cell,
         attacker: PlayerKind,
     ) -> Option<((Cell, Cell), CaptureKind)> {
-        let attackers: Vec<Cell> = Self::orthogonal_neighbours(target)
+        let mut attackers: Vec<Cell> = Self::orthogonal_neighbours(target)
             .into_iter()
             .filter(|neighbour| {
-                matches!(self.cells[neighbour.to_index()], Some(piece) if piece.player == attacker)
+                matches!(self.cells[neighbour.to_index()], Some(piece) if piece.player == attacker && piece.kind != PieceKind::Knight)
             })
             .collect();
+        attackers.extend(Self::knight_forward_neighbours(target, attacker.opposite())
+            .into_iter()
+            .filter(|neighbour| {
+                matches!(self.cells[neighbour.to_index()], Some(piece) if piece.player == attacker && piece.kind == PieceKind::Knight)
+            }));
 
         for i in 0..attackers.len() {
             for j in (i + 1)..attackers.len() {
@@ -375,8 +325,24 @@ impl BoardState {
         }
     }
 
+    /// Cells a just-moved piece at `to` might now be threatening as an attacker: its
+    /// plain orthogonal neighbours, plus — if it's a Knight — its forward arc, since a
+    /// Knight's capture reach extends diagonally ahead of it (see
+    /// `knight_forward_neighbours`).
+    fn capture_scan_cells(&self, to: Cell, mover: PlayerKind) -> Vec<Cell> {
+        let mut cells = Self::orthogonal_neighbours(to);
+        if matches!(self.cells[to.to_index()], Some(piece) if piece.kind == PieceKind::Knight) {
+            for cell in Self::knight_forward_neighbours(to, mover) {
+                if !cells.contains(&cell) {
+                    cells.push(cell);
+                }
+            }
+        }
+        cells
+    }
+
     fn check_crown_capture(&self, to: Cell, attacker: PlayerKind) -> Option<Cell> {
-        Self::orthogonal_neighbours(to)
+        self.capture_scan_cells(to, attacker)
             .into_iter()
             .find_map(|neighbour| {
                 let piece = self.cells[neighbour.to_index()]?;
@@ -393,7 +359,7 @@ impl BoardState {
         to: Cell,
         attacker: PlayerKind,
     ) -> Vec<(Cell, CaptureKind, (Cell, Cell))> {
-        Self::orthogonal_neighbours(to)
+        self.capture_scan_cells(to, attacker)
             .into_iter()
             .filter_map(|neighbour| {
                 let piece = self.cells[neighbour.to_index()]?;
@@ -426,6 +392,19 @@ impl BoardState {
 }
 
 impl Game {
+    /// Turns remaining before the `TOTAL_TURN_LIMIT` safety-net draw fires,
+    /// regardless of repetition or recent captures.
+    pub fn turns_remaining(&self) -> u16 {
+        let turns_played = (self.history.len() - 1) as u16;
+        TOTAL_TURN_LIMIT.saturating_sub(turns_played)
+    }
+
+    /// Turns remaining before the no-progress draw fires if no capture
+    /// happens in the meantime (chess's 50-move rule, adapted).
+    pub fn turns_remaining_before_no_progress_draw(&self) -> u16 {
+        NO_PROGRESS_LIMIT.saturating_sub(self.moves_since_capture)
+    }
+
     pub fn handle_player_action(
         self,
         action: PlayerAction,

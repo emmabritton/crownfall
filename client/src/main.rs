@@ -1,4 +1,5 @@
 mod ai_game;
+mod ai_settings_scene;
 mod game;
 mod game_list_scene;
 mod game_renderer;
@@ -6,8 +7,10 @@ mod login;
 mod net;
 
 use crate::ai_game::AiGameScene;
+use crate::ai_settings_scene::AiSettingsScene;
 use crate::game::GameScene;
 use crate::game_list_scene::GameListScene;
+use ::game::ai::{Difficulty, Personality};
 use anyhow::Result;
 use pixels_graphics_lib::prelude::*;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -78,7 +81,10 @@ fn main() -> Result<()> {
                 scene_stack.push(GameListScene::new(style));
                 scene_stack.push(GameScene::new(game_id));
             }
-            SceneName::AiGame => scene_stack.push(AiGameScene::new()),
+            SceneName::AiSettings => scene_stack.push(AiSettingsScene::new(style)),
+            SceneName::AiGame(difficulty, personality) => {
+                scene_stack.push(AiGameScene::new(difficulty, personality))
+            }
         };
     run_scenes(
         WIDTH,
@@ -106,7 +112,8 @@ enum SceneName {
     GameList,
     Game(GameId),
     RejoinGame(GameId),
-    AiGame,
+    AiSettings,
+    AiGame(Difficulty, Personality),
 }
 
 #[derive(Clone, Debug, PartialEq)]

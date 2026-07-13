@@ -58,18 +58,20 @@ fn spy_capture_removes_target_from_board() {
 }
 
 #[test]
-fn knight_capture_removes_target_and_one_attacker() {
+fn knight_pincer_of_two_diagonal_attackers_captures() {
+    // Both attackers diagonally ahead of the target, with the straight-ahead cell
+    // empty — target (3,3)=24, attackers at (2,4)=30 and (4,4)=32.
     let mut board = empty_board();
     board.cells[24] = Some(Piece {
         kind: PieceKind::Knight,
         player: PlayerKind::Black,
     });
-    board.cells[23] = Some(Piece {
+    board.cells[30] = Some(Piece {
         kind: PieceKind::Knight,
         player: PlayerKind::White,
     });
     pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
-    board.cells[32] = Some(Piece {
+    board.cells[39] = Some(Piece {
         kind: PieceKind::Knight,
         player: PlayerKind::White,
     });
@@ -86,8 +88,96 @@ fn knight_capture_removes_target_and_one_attacker() {
     let (game, _result) = game
         .handle_player_action(PlayerAction::Move {
             player: PlayerKind::White,
-            from: Cell::new_index(32),
-            to: Cell::new_index(25),
+            from: Cell::new_index(39),
+            to: Cell::new_index(32),
+        })
+        .expect("valid move");
+
+    assert!(
+        game.board.cells[24].is_none(),
+        "two diagonally-ahead knights should form a valid pincer even with the straight-ahead cell empty"
+    );
+}
+
+#[test]
+fn knight_beside_target_cannot_complete_a_pincer() {
+    // One attacker directly ahead of the target (valid), the other directly beside it
+    // (same row — not in either attacker's forward arc, invalid). Even though one
+    // attacker is legitimately positioned, the side attacker disqualifies the pincer.
+    let mut board = empty_board();
+    board.cells[24] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::Black,
+    });
+    board.cells[23] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
+    board.cells[38] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+
+    let game = Game {
+        board,
+        state: GameState::Playing(PlayState::WaitingForInput {
+            player: PlayerKind::White,
+        }),
+        history: Vec::new(),
+        moves_since_capture: 0,
+    };
+
+    let (game, result) = game
+        .handle_player_action(PlayerAction::Move {
+            player: PlayerKind::White,
+            from: Cell::new_index(38),
+            to: Cell::new_index(31),
+        })
+        .expect("valid move");
+
+    assert!(
+        game.board.cells[24].is_some(),
+        "a side attacker plus a front attacker is not a valid Knight Capture pincer"
+    );
+    assert!(!matches!(result, Some(TurnResult::Capture { .. })));
+}
+
+#[test]
+fn knight_capture_removes_target_and_one_attacker() {
+    // Target Black Knight at (3,3)=24. White's forward-arc attacker cells against
+    // it are the row "behind" it from White's perspective, y=4: (2,4)=30, (3,4)=31,
+    // (4,4)=32. One White Knight already sits at 31 (directly ahead); the other
+    // moves in from (4,5)=39 to 32 (diagonally ahead) to complete the pincer.
+    let mut board = empty_board();
+    board.cells[24] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::Black,
+    });
+    board.cells[31] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
+    board.cells[39] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+
+    let game = Game {
+        board,
+        state: GameState::Playing(PlayState::WaitingForInput {
+            player: PlayerKind::White,
+        }),
+        history: Vec::new(),
+        moves_since_capture: 0,
+    };
+
+    let (game, _result) = game
+        .handle_player_action(PlayerAction::Move {
+            player: PlayerKind::White,
+            from: Cell::new_index(39),
+            to: Cell::new_index(32),
         })
         .expect("valid move");
 
@@ -95,7 +185,7 @@ fn knight_capture_removes_target_and_one_attacker() {
         game.board.cells[24].is_none(),
         "captured knight target should be removed from the board"
     );
-    let knight_losses = [game.board.cells[23], game.board.cells[25]]
+    let knight_losses = [game.board.cells[31], game.board.cells[32]]
         .iter()
         .filter(|c| c.is_none())
         .count();
@@ -132,11 +222,11 @@ fn high_spy_count_prevents_attrition_despite_low_knight_count() {
         kind: PieceKind::Spy,
         player: PlayerKind::Black,
     });
-    board.cells[23] = Some(Piece {
+    board.cells[31] = Some(Piece {
         kind: PieceKind::Knight,
         player: PlayerKind::White,
     });
-    board.cells[32] = Some(Piece {
+    board.cells[39] = Some(Piece {
         kind: PieceKind::Knight,
         player: PlayerKind::White,
     });
@@ -153,8 +243,8 @@ fn high_spy_count_prevents_attrition_despite_low_knight_count() {
     let (game, _result) = game
         .handle_player_action(PlayerAction::Move {
             player: PlayerKind::White,
-            from: Cell::new_index(32),
-            to: Cell::new_index(25),
+            from: Cell::new_index(39),
+            to: Cell::new_index(32),
         })
         .expect("valid move");
 
@@ -225,11 +315,11 @@ fn mutual_knight_exhaustion_from_the_same_capture_is_a_draw() {
         kind: PieceKind::Knight,
         player: PlayerKind::Black,
     });
-    board.cells[23] = Some(Piece {
+    board.cells[31] = Some(Piece {
         kind: PieceKind::Knight,
         player: PlayerKind::White,
     });
-    board.cells[32] = Some(Piece {
+    board.cells[39] = Some(Piece {
         kind: PieceKind::Knight,
         player: PlayerKind::White,
     });
@@ -246,8 +336,8 @@ fn mutual_knight_exhaustion_from_the_same_capture_is_a_draw() {
     let (game, _result) = game
         .handle_player_action(PlayerAction::Move {
             player: PlayerKind::White,
-            from: Cell::new_index(32),
-            to: Cell::new_index(25),
+            from: Cell::new_index(39),
+            to: Cell::new_index(32),
         })
         .expect("valid move");
 
@@ -268,12 +358,12 @@ fn knight_pincer_capturing_a_spy_loses_no_knight() {
         kind: PieceKind::Spy,
         player: PlayerKind::Black,
     });
-    board.cells[23] = Some(Piece {
+    board.cells[31] = Some(Piece {
         kind: PieceKind::Knight,
         player: PlayerKind::White,
     });
     pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
-    board.cells[32] = Some(Piece {
+    board.cells[39] = Some(Piece {
         kind: PieceKind::Knight,
         player: PlayerKind::White,
     });
@@ -290,8 +380,8 @@ fn knight_pincer_capturing_a_spy_loses_no_knight() {
     let (game, _result) = game
         .handle_player_action(PlayerAction::Move {
             player: PlayerKind::White,
-            from: Cell::new_index(32),
-            to: Cell::new_index(25),
+            from: Cell::new_index(39),
+            to: Cell::new_index(32),
         })
         .expect("valid move");
 
@@ -300,13 +390,17 @@ fn knight_pincer_capturing_a_spy_loses_no_knight() {
         "captured spy should be removed from the board"
     );
     assert!(
-        game.board.cells[23].is_some() && game.board.cells[25].is_some(),
+        game.board.cells[31].is_some() && game.board.cells[32].is_some(),
         "no attacking knight should be lost when the captured piece was a Spy"
     );
 }
 
 #[test]
 fn crown_partnered_knight_capture_never_loses_the_crown() {
+    // Crown sits beside the target (23, a side cell — fine, the Crown isn't bound by
+    // the Knight forward-arc restriction), while the Knight moves in from directly
+    // behind its own forward-arc cell (3,5)=38 to (3,4)=31, straight ahead of the
+    // target at (3,3)=24.
     let mut board = empty_board();
     board.cells[24] = Some(Piece {
         kind: PieceKind::Knight,
@@ -317,7 +411,7 @@ fn crown_partnered_knight_capture_never_loses_the_crown() {
         player: PlayerKind::White,
     });
     pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
-    board.cells[32] = Some(Piece {
+    board.cells[38] = Some(Piece {
         kind: PieceKind::Knight,
         player: PlayerKind::White,
     });
@@ -334,8 +428,8 @@ fn crown_partnered_knight_capture_never_loses_the_crown() {
     let (game, _result) = game
         .handle_player_action(PlayerAction::Move {
             player: PlayerKind::White,
-            from: Cell::new_index(32),
-            to: Cell::new_index(25),
+            from: Cell::new_index(38),
+            to: Cell::new_index(31),
         })
         .expect("valid move");
 
@@ -410,19 +504,19 @@ fn extra_adjacent_attacker_does_not_block_a_valid_pincer() {
     // alongside two knights that form a valid pincer. The extra piece must not
     // prevent the knight capture from resolving.
     let mut board = empty_board();
-    board.cells[23] = Some(Piece {
+    board.cells[24] = Some(Piece {
         kind: PieceKind::Knight,
         player: PlayerKind::Black,
     });
-    board.cells[30] = Some(Piece {
+    board.cells[31] = Some(Piece {
         kind: PieceKind::Knight,
         player: PlayerKind::White,
     });
-    board.cells[22] = Some(Piece {
+    board.cells[23] = Some(Piece {
         kind: PieceKind::Spy,
         player: PlayerKind::White,
     });
-    board.cells[31] = Some(Piece {
+    board.cells[39] = Some(Piece {
         kind: PieceKind::Knight,
         player: PlayerKind::White,
     });
@@ -440,18 +534,18 @@ fn extra_adjacent_attacker_does_not_block_a_valid_pincer() {
     let (game, result) = game
         .handle_player_action(PlayerAction::Move {
             player: PlayerKind::White,
-            from: Cell::new_index(31),
-            to: Cell::new_index(24),
+            from: Cell::new_index(39),
+            to: Cell::new_index(32),
         })
         .expect("valid move");
 
     assert!(
-        game.board.cells[23].is_none(),
+        game.board.cells[24].is_none(),
         "the black knight should be captured despite a third white piece also being adjacent"
     );
     assert!(matches!(
         result,
-        Some(TurnResult::Capture { removed, .. }) if removed == Cell::new_index(23)
+        Some(TurnResult::Capture { removed, .. }) if removed == Cell::new_index(24)
     ));
 }
 
@@ -541,7 +635,7 @@ fn moving_into_a_spy_pincer_captures_the_moved_piece() {
 }
 
 #[test]
-fn knights_cannot_move_sideways_or_backward() {
+fn knights_can_move_orthogonally_but_not_backward_or_diagonally() {
     let mut board = empty_board();
     board.cells[24] = Some(Piece {
         kind: PieceKind::Knight,
@@ -557,7 +651,7 @@ fn knights_cannot_move_sideways_or_backward() {
         moves_since_capture: 0,
     };
 
-    // Sideways (same row) is illegal.
+    // Sideways (same row) is legal.
     assert!(
         game.clone()
             .handle_player_action(PlayerAction::Move {
@@ -565,7 +659,7 @@ fn knights_cannot_move_sideways_or_backward() {
                 from: Cell::new_index(24),
                 to: Cell::new_index(23),
             })
-            .is_err()
+            .is_ok()
     );
 
     // Backward (away from the opponent's side) is illegal.
@@ -579,15 +673,27 @@ fn knights_cannot_move_sideways_or_backward() {
             .is_err()
     );
 
-    // Forward-diagonal is legal.
+    // Forward-diagonal is no longer a legal move — that shape is now the
+    // Knight's capture reach, not a movement destination.
+    assert!(
+        game.clone()
+            .handle_player_action(PlayerAction::Move {
+                player: PlayerKind::White,
+                from: Cell::new_index(24),
+                to: Cell::new_index(16),
+            })
+            .is_err()
+    );
+
+    // Straight forward is legal.
     let (game, _) = game
         .handle_player_action(PlayerAction::Move {
             player: PlayerKind::White,
             from: Cell::new_index(24),
-            to: Cell::new_index(16),
+            to: Cell::new_index(17),
         })
-        .expect("forward-diagonal knight move should be legal");
-    assert!(game.board.cells[16].is_some());
+        .expect("straight-forward knight move should be legal");
+    assert!(game.board.cells[17].is_some());
 }
 
 #[test]
@@ -642,6 +748,6 @@ fn crown_walking_into_a_pincer_loses_immediately_even_mid_capture() {
         "the spy the crown tried to capture survives"
     );
     assert!(
-        matches!(result, Some(TurnResult::Victory { player:PlayerKind::White,surrounded_crown }) if surrounded_crown == Cell::new_index(8))
+        matches!(result, Some(TurnResult::Victory { player:PlayerKind::Black,surrounded_crown }) if surrounded_crown == Cell::new_index(8))
     );
 }

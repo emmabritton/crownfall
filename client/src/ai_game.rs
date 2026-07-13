@@ -1,6 +1,6 @@
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::{BACKGROUND, SceneName, SceneResult};
-use game::ai::{DEFAULT_DEPTH, best_move};
+use game::ai::{Difficulty, Personality, best_move};
 use game::{Cell, Game, GameState, Piece, PlayState, PlayerAction, PlayerKind, TurnResult};
 use pixels_graphics_lib::MouseData;
 use pixels_graphics_lib::buffer_graphics_lib::Graphics;
@@ -32,6 +32,8 @@ struct MoveAnimation {
 
 pub struct AiGameScene {
     game: Game,
+    difficulty: Difficulty,
+    personality: Personality,
     drag: Option<DragState>,
     ai_timer: Option<Timer>,
     animation: Option<MoveAnimation>,
@@ -41,9 +43,11 @@ pub struct AiGameScene {
 }
 
 impl AiGameScene {
-    pub fn new() -> Box<AiGameScene> {
+    pub fn new(difficulty: Difficulty, personality: Personality) -> Box<AiGameScene> {
         Box::new(AiGameScene {
             game: Game::default(),
+            difficulty,
+            personality,
             drag: None,
             ai_timer: None,
             animation: None,
@@ -220,7 +224,8 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
         {
             self.ai_timer = None;
             if is_ais_turn(&self.game)
-                && let Some(action) = best_move(&self.game, AI, DEFAULT_DEPTH)
+                && let Some(action) =
+                    best_move(&self.game, AI, self.difficulty.depth(), self.personality)
                 && let Ok((next, turn_result)) = self.game.clone().handle_player_action(action)
             {
                 self.animate_or_apply(next, turn_result);
