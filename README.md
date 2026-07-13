@@ -39,6 +39,12 @@ White goes first.
 3. A piece may not move onto an occupied tile or off the board.
 4. After a move, any captures that result from the move are resolved immediately (see **Captures**). Capture adjacency is always orthogonal (see **Adjacency**), regardless of how a piece moved to get there.
 
+### Movement
+
+Knights can move left, right and forwards. They take diagonally forward, and require another knight in of the target as well.
+
+Spies and Crown can move left, right, up and down. They take in any direction.
+
 ### Adjacency
 
 Two tiles are **adjacent** if they share an edge (orthogonal neighbors only (up, down, left, right)). Diagonal tiles are never adjacent.
