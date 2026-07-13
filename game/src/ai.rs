@@ -1,11 +1,57 @@
 //! A minimax (negamax) game-playing AI for local/offline vs-computer play.
-use crate::{BOARD_LENGTH, Cell, Game, GameState, PieceKind, PlayerAction, PlayerKind};
-use alloc::vec::Vec;
+//!
+//! The search is allocation-free: legal moves live in fixed stack buffers,
+//! and candidate positions are explored by mutating a single `Game` in place
+//! (`Game::apply_action_quiet`) and rolling it back from a small snapshot —
+//! the board is a plain `Copy` and the position history only ever grows, so
+//! undo is a couple of stores plus a `Vec::truncate`. This matters on the
+//! GBA's ARM7TDMI, where a per-node heap clone of the history would dwarf
+//! the actual search work.
+use crate::tables::{CELL_COUNT, DIST};
+use crate::{BOARD_LENGTH, BoardState, Cell, Game, GameState, PieceKind, PlayerAction, PlayerKind};
 
 /// Manhattan distance is at most 2*(BOARD_LENGTH-1) (opposite corners);
 /// subtracting it from this yields a "closer is bigger" score.
 const MAX_DISTANCE: i32 = 2 * (BOARD_LENGTH as i32 - 1);
 const VICTORY_SCORE: i32 = 1000000;
+
+/// Upper bound on one side's legal moves: at most 10 pieces (1 Crown, 6
+/// Knights, 3 Spies — pieces are only ever lost), each with at most 4
+/// destinations.
+const MAX_MOVES: usize = 40;
+
+/// A side's legal moves as packed (from, to) cell indices — 2 bytes per move
+/// on the stack, so recursion depth stays cheap on the GBA's small stack.
+struct MoveList {
+    moves: [(u8, u8); MAX_MOVES],
+    len: usize,
+}
+
+/// Everything needed to roll a `Game` back after `apply_action_quiet`: the
+/// history is append-only, so restoring it is just a truncate (which keeps
+/// the Vec's capacity — no churn).
+struct Undo {
+    board: BoardState,
+    state: GameState,
+    moves_since_capture: u16,
+    history_len: usize,
+}
+
+fn snapshot(game: &Game) -> Undo {
+    Undo {
+        board: game.board,
+        state: game.state,
+        moves_since_capture: game.moves_since_capture,
+        history_len: game.history.len(),
+    }
+}
+
+fn restore(game: &mut Game, undo: &Undo) {
+    game.board = undo.board;
+    game.state = undo.state;
+    game.moves_since_capture = undo.moves_since_capture;
+    game.history.truncate(undo.history_len);
+}
 
 /// How many plies the AI searches ahead. Higher sees further into forced
 /// sequences at the cost of move time (7x7 board, ~9 pieces/side keeps the
@@ -93,23 +139,35 @@ pub fn best_move(
     depth: u8,
     personality: Personality,
 ) -> Option<PlayerAction> {
-    let moves = legal_moves(game, player);
+    // The one clone of the whole search — every node below mutates this copy
+    // in place and rolls it back.
+    let mut game = game.clone();
+    let moves = collect_moves(&game.board, player);
     let mut best: Option<PlayerAction> = None;
     let mut best_score = i32::MIN;
     let mut alpha = i32::MIN + 1;
     let beta = i32::MAX - 1;
-    for action in moves {
-        let Ok((next, _)) = game.clone().handle_player_action(action.clone()) else {
-            continue;
+    for &(from, to) in &moves.moves[..moves.len] {
+        let action = PlayerAction::Move {
+            player,
+            from: Cell::new_index(from as usize),
+            to: Cell::new_index(to as usize),
         };
+        let undo = snapshot(&game);
+        // `apply_action_quiet` leaves the game untouched on Err, so no
+        // rollback is needed to skip the move.
+        if game.apply_action_quiet(action).is_err() {
+            continue;
+        }
         let score = -negamax(
-            &next,
+            &mut game,
             player.opposite(),
             depth.saturating_sub(1),
             personality,
             -beta,
             -alpha,
         );
+        restore(&mut game, &undo);
         if best.is_none() || score > best_score {
             best_score = score;
             best = Some(action);
@@ -122,7 +180,7 @@ pub fn best_move(
 }
 
 fn negamax(
-    game: &Game,
+    game: &mut Game,
     player: PlayerKind,
     depth: u8,
     personality: Personality,
@@ -144,17 +202,31 @@ fn negamax(
         return evaluate(game, player, personality);
     }
 
-    let moves = legal_moves(game, player);
-    if moves.is_empty() {
+    let moves = collect_moves(&game.board, player);
+    if moves.len == 0 {
         return evaluate(game, player, personality);
     }
 
     let mut best = i32::MIN + 1;
-    for action in moves {
-        let Ok((next, _)) = game.clone().handle_player_action(action) else {
-            continue;
+    for &(from, to) in &moves.moves[..moves.len] {
+        let action = PlayerAction::Move {
+            player,
+            from: Cell::new_index(from as usize),
+            to: Cell::new_index(to as usize),
         };
-        let score = -negamax(&next, player.opposite(), depth - 1, personality, -beta, -alpha);
+        let undo = snapshot(game);
+        if game.apply_action_quiet(action).is_err() {
+            continue;
+        }
+        let score = -negamax(
+            game,
+            player.opposite(),
+            depth - 1,
+            personality,
+            -beta,
+            -alpha,
+        );
+        restore(game, &undo);
         if score > best {
             best = score;
         }
@@ -168,82 +240,79 @@ fn negamax(
     best
 }
 
-fn legal_moves(game: &Game, player: PlayerKind) -> Vec<PlayerAction> {
-    let mut moves = Vec::new();
-    for index in 0..game.board.cells.len() {
-        if let Some(piece) = game.board.cells[index]
+fn collect_moves(board: &BoardState, player: PlayerKind) -> MoveList {
+    let mut list = MoveList {
+        moves: [(0, 0); MAX_MOVES],
+        len: 0,
+    };
+    for index in 0..CELL_COUNT {
+        if let Some(piece) = board.cells[index]
             && piece.player == player
         {
-            let from = Cell::new_index(index);
-            for to in game.board.get_valid_destinations_for(from) {
-                moves.push(PlayerAction::Move { player, from, to });
+            for &to in board.move_candidates(Cell::new_index(index)) {
+                if board.cells[to as usize].is_none() {
+                    list.moves[list.len] = (index as u8, to);
+                    list.len += 1;
+                }
             }
         }
     }
-    moves
+    list
 }
 
-fn manhattan_distance(a: Cell, b: Cell) -> i32 {
-    let (ax, ay) = a.to_coord();
-    let (bx, by) = b.to_coord();
-    (ax as i32 - bx as i32).abs() + (ay as i32 - by as i32).abs()
+fn crown_index(board: &BoardState, player: PlayerKind) -> Option<usize> {
+    board.cells.iter().position(|piece| {
+        matches!(piece, Some(piece) if piece.player == player && piece.kind == PieceKind::Crown)
+    })
 }
 
-fn crown_cell(game: &Game, player: PlayerKind) -> Option<Cell> {
-    game.board
-        .cells
-        .iter()
-        .enumerate()
-        .find_map(|(index, piece)| {
-            let piece = (*piece)?;
-            (piece.player == player && piece.kind == PieceKind::Crown)
-                .then(|| Cell::new_index(index))
-        })
-}
-
-/// Sum, over every non-Crown piece owned by `player`, of how close that
-/// piece is to `target`'s Crown — higher when `player`'s pieces are massed
-/// nearer the target's Crown. 0 if the target has no Crown on the board
-/// (already captured, so proximity to it is meaningless).
-fn crown_proximity(game: &Game, player: PlayerKind, target: PlayerKind) -> i32 {
-    let Some(enemy_crown) = crown_cell(game, target) else {
-        return 0;
-    };
-    game.board
-        .cells
-        .iter()
-        .enumerate()
-        .filter_map(|(index, piece)| {
-            let piece = (*piece)?;
-            (piece.player == player && piece.kind != PieceKind::Crown)
-                .then(|| MAX_DISTANCE - manhattan_distance(Cell::new_index(index), enemy_crown))
-        })
-        .sum()
-}
-
+/// Static evaluation from `player`'s point of view. Three symmetric terms:
+/// material (piece values), mobility (legal-move-count difference), and
+/// crown proximity (each non-Crown piece scores `MAX_DISTANCE` minus its
+/// `tables::DIST` distance to the enemy Crown, rewarding massing pieces near
+/// it — the enemy's advance on ours counts against us the same way, keeping
+/// the term zero-sum for negamax). Every term is per-piece additive, so the
+/// whole thing is a single pass over the board (evaluate runs at every leaf
+/// of the search — this is the hottest loop in the crate after
+/// `apply_action` itself).
 fn evaluate(game: &Game, player: PlayerKind, personality: Personality) -> i32 {
     let weights = personality.weights();
-    let mut score = 0;
-    for piece in game.board.cells.iter().flatten() {
-        let value = match piece.kind {
-            PieceKind::Crown => weights.crown,
-            PieceKind::Knight => weights.knight,
-            PieceKind::Spy => weights.spy,
+    let board = &game.board;
+    // Proximity to a Crown that's already been captured is meaningless, so a
+    // missing Crown zeroes that side's proximity term.
+    let own_crown = crown_index(board, player);
+    let enemy_crown = crown_index(board, player.opposite());
+
+    let mut material = 0;
+    let mut mobility = 0;
+    let mut proximity = 0;
+    for (index, &cell) in board.cells.iter().enumerate() {
+        let Some(piece) = cell else {
+            continue;
         };
-        score += if piece.player == player {
-            value
-        } else {
-            -value
-        };
+        let mine = piece.player == player;
+        let sign = if mine { 1 } else { -1 };
+
+        material += sign
+            * match piece.kind {
+                PieceKind::Crown => weights.crown,
+                PieceKind::Knight => weights.knight,
+                PieceKind::Spy => weights.spy,
+            };
+
+        for &to in board.move_candidates(Cell::new_index(index)) {
+            if board.cells[to as usize].is_none() {
+                mobility += sign;
+            }
+        }
+
+        if piece.kind != PieceKind::Crown {
+            let target_crown = if mine { enemy_crown } else { own_crown };
+            if let Some(crown) = target_crown {
+                proximity += sign * (MAX_DISTANCE - DIST[crown][index] as i32);
+            }
+        }
     }
 
-    let mobility =
-        legal_moves(game, player).len() as i32 - legal_moves(game, player.opposite()).len() as i32;
-    score += weights.mobility * mobility;
-
-    // Advancing on the enemy Crown is rewarded; the enemy advancing on ours is
-    // penalized the same way, keeping the term zero-sum for negamax.
-    let proximity = crown_proximity(game, player, player.opposite())
-        - crown_proximity(game, player.opposite(), player);
-    score + weights.crown_proximity * proximity
+    material + weights.mobility * mobility + weights.crown_proximity * proximity
 }

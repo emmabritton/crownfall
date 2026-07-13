@@ -1,15 +1,33 @@
 use crate::errors::GameError;
-use crate::hash::Fnv1aHasher;
+use crate::hash::position_hash;
+use crate::tables::{self, CELL_COUNT};
 use crate::*;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::hash::{Hash, Hasher};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CaptureKind {
     Spy,
     Knight,
 }
+
+/// One capture detected by `check_piece_captures` — kept `Copy` so a move's
+/// worth of captures fits in a stack array (see `PieceCaptures`).
+#[derive(Clone, Copy)]
+struct PieceCapture {
+    target: Cell,
+    kind: CaptureKind,
+    attackers: (Cell, Cell),
+}
+
+/// The capture scan looks at a mover's 4 orthogonal neighbours plus, for a
+/// Knight, its 2 forward-diagonal arc cells (the straight-forward one is
+/// already orthogonal) — so a single move can never threaten more than 6
+/// cells, and each threatened cell yields at most one capture.
+const MAX_SCAN_CELLS: usize = 6;
+
+type ScanCells = ([u8; MAX_SCAN_CELLS], usize);
+type PieceCaptures = ([PieceCapture; MAX_SCAN_CELLS], usize);
 
 /// Number of times a position (board + player to move) must occur for the
 /// game to be declared a draw (matches chess's threefold repetition rule).
@@ -23,13 +41,6 @@ const NO_PROGRESS_LIMIT: u16 = 40;
 /// Absolute turn-count safety net: the game is drawn if it's still going
 /// after this many turns, regardless of repetition or progress.
 const TOTAL_TURN_LIMIT: u16 = 200;
-
-fn position_hash(board: &BoardState, next_player: PlayerKind) -> u64 {
-    let mut hasher = Fnv1aHasher::default();
-    board.hash(&mut hasher);
-    next_player.hash(&mut hasher);
-    hasher.finish()
-}
 
 /// Records the position that's about to be played from and returns the
 /// resulting `GameState` — `Draw` if this exact position has now recurred
@@ -51,7 +62,18 @@ fn resolve_continuation(
 
     let key = position_hash(board, next_player);
     history.push(key);
-    let repeats = history.iter().filter(|&&h| h == key).count();
+    // Newest-first with an early exit at the limit: this runs on every applied
+    // move (including AI-search nodes), and near-repetitions cluster at the
+    // recent end of the history.
+    let mut repeats = 0;
+    for &hash in history.iter().rev() {
+        if hash == key {
+            repeats += 1;
+            if repeats >= REPETITION_LIMIT {
+                break;
+            }
+        }
+    }
     let turns_played = (history.len() - 1) as u16;
 
     if repeats >= REPETITION_LIMIT {
@@ -141,108 +163,46 @@ impl PlayState {
 }
 
 impl BoardState {
-    /// Legal move destinations for the piece at `cell`. Knights move
-    /// orthogonally like every other piece, except they may never move
-    /// backward (away from the opponent's starting rows) — forward, left,
-    /// and right only. Their old diagonal-forward reach is now the shape of
-    /// their *capture* threat instead (see `knight_forward_neighbours`).
+    /// Move-candidate cells for the piece at `cell`, ignoring occupancy:
+    /// Knights get their orthogonal-minus-backward table, everything else the
+    /// plain orthogonal one (see `tables` — Knights move orthogonally like
+    /// every other piece but may never move backward; their old
+    /// diagonal-forward reach is now the shape of their *capture* threat
+    /// instead, `tables::KNIGHT_ARCS`). A straight ROM lookup: no coordinate
+    /// math, no bounds branches, no allocation.
+    pub(crate) fn move_candidates(&self, cell: Cell) -> &'static [u8] {
+        match self.cells[cell.to_index()] {
+            Some(piece) if piece.kind == PieceKind::Knight => {
+                tables::KNIGHT_MOVES[piece.player as usize][cell.to_index()].as_slice()
+            }
+            Some(_) => tables::ORTHO[cell.to_index()].as_slice(),
+            None => &[],
+        }
+    }
+
+    /// Legal move destinations for the piece at `cell`. Allocates the result
+    /// for UI callers; the AI and move validation use `move_candidates`
+    /// directly and never build this `Vec`.
     pub fn get_valid_destinations_for(&self, cell: Cell) -> Vec<Cell> {
-        let Some(piece) = self.cells[cell.to_index()] else {
-            return Vec::new();
-        };
-
-        let candidates = if piece.kind == PieceKind::Knight {
-            Self::knight_move_neighbours(cell, piece.player)
-        } else {
-            Self::orthogonal_neighbours(cell)
-        };
-
-        candidates
-            .into_iter()
-            .filter(|neighbour| self.cells[neighbour.to_index()].is_none())
-            .collect()
-    }
-
-    fn orthogonal_neighbours(cell: Cell) -> Vec<Cell> {
-        let (x, y) = cell.to_coord();
-        let mut neighbours = Vec::with_capacity(4);
-        if y > 0 {
-            neighbours.push(Cell::new_coord(x, y - 1));
-        }
-        if y + 1 < BOARD_LENGTH {
-            neighbours.push(Cell::new_coord(x, y + 1));
-        }
-        if x > 0 {
-            neighbours.push(Cell::new_coord(x - 1, y));
-        }
-        if x + 1 < BOARD_LENGTH {
-            neighbours.push(Cell::new_coord(x + 1, y));
-        }
-        neighbours
-    }
-
-    /// The y-axis direction a player's Knights advance in: Black starts near
-    /// row A (y=0) and advances toward row G (+y); White starts near row G
-    /// and advances toward row A (-y).
-    fn knight_forward_dir(player: PlayerKind) -> isize {
-        match player {
-            PlayerKind::Black => 1,
-            PlayerKind::White => -1,
-        }
-    }
-
-    /// The orthogonal neighbours of a Knight's cell, excluding the backward
-    /// one (away from the opponent's starting rows) — forward, left, and
-    /// right are legal Knight moves, matching every other piece except for
-    /// that one missing direction.
-    fn knight_move_neighbours(cell: Cell, player: PlayerKind) -> Vec<Cell> {
-        let (x, y) = cell.to_coord();
-        let backward_y = y as isize - Self::knight_forward_dir(player);
-        Self::orthogonal_neighbours(cell)
-            .into_iter()
-            .filter(|neighbour| {
-                let (nx, ny) = neighbour.to_coord();
-                !(nx == x && ny as isize == backward_y)
-            })
-            .collect()
-    }
-
-    /// The (up to) 3 cells in the row ahead of a Knight: straight forward,
-    /// forward-left, and forward-right. This is no longer a movement shape —
-    /// it's the Knight's *capture* reach: a Knight can only take part in a
-    /// Knight Capture pincer against a target that falls within this arc
-    /// from its own cell (a Knight directly beside or behind a target does
-    /// not count, only ahead or diagonally ahead of it). A Knight that just
-    /// moved must additionally land in one of the two *diagonal* cells to be
-    /// the piece completing the pincer — see `is_diagonally_forward_of`.
-    fn knight_forward_neighbours(cell: Cell, player: PlayerKind) -> Vec<Cell> {
-        let (x, y) = cell.to_coord();
-        let forward_y = y as isize + Self::knight_forward_dir(player);
-        if forward_y < 0 || forward_y as usize >= BOARD_LENGTH {
-            return Vec::new();
-        }
-        let forward_y = forward_y as usize;
-        [-1isize, 0, 1]
-            .into_iter()
-            .filter_map(|dx| {
-                let nx = x as isize + dx;
-                (nx >= 0 && (nx as usize) < BOARD_LENGTH)
-                    .then(|| Cell::new_coord(nx as usize, forward_y))
-            })
+        self.move_candidates(cell)
+            .iter()
+            .filter(|&&index| self.cells[index as usize].is_none())
+            .map(|&index| Cell::new_index(index as usize))
             .collect()
     }
 
     /// True if `attacker_cell` is diagonally (not straight) ahead of `target`
     /// from `attacker`'s forward direction — i.e. one of the two diagonal
-    /// cells in `knight_forward_neighbours(target, attacker.opposite())`,
-    /// excluding the straight-ahead one. A Knight that just moved must land
-    /// here (not merely directly ahead) to be the piece completing a Knight
-    /// Capture pincer — see `check_piece_captures`/`check_crown_capture`.
+    /// cells of `tables::KNIGHT_ARCS[attacker.opposite()][target]` (the arc
+    /// as seen from the target's square), excluding the straight-ahead one.
+    /// A Knight that just moved must land here (not merely directly ahead)
+    /// to be the piece completing a Knight Capture pincer — see
+    /// `check_piece_captures`/`check_crown_capture`.
     fn is_diagonally_forward_of(target: Cell, attacker_cell: Cell, attacker: PlayerKind) -> bool {
-        let (tx, _) = target.to_coord();
-        let (ax, _) = attacker_cell.to_coord();
-        ax != tx
-            && Self::knight_forward_neighbours(target, attacker.opposite()).contains(&attacker_cell)
+        tables::COORD[attacker_cell.to_index()].0 != tables::COORD[target.to_index()].0
+            && tables::KNIGHT_ARCS[attacker.opposite() as usize][target.to_index()]
+                .as_slice()
+                .contains(&(attacker_cell.to_index() as u8))
     }
 
     fn piece_count(&self, player: PlayerKind, kind: PieceKind) -> usize {
@@ -253,12 +213,29 @@ impl BoardState {
             .count()
     }
 
+    /// First pair among `attackers` whose piece kinds form a valid capture,
+    /// in the order the attackers were gathered.
+    fn first_capturing_pair(&self, attackers: &[u8]) -> Option<((Cell, Cell), CaptureKind)> {
+        for i in 0..attackers.len() {
+            for j in (i + 1)..attackers.len() {
+                let pair = (
+                    Cell::new_index(attackers[i] as usize),
+                    Cell::new_index(attackers[j] as usize),
+                );
+                if let Some(kind) = self.capture_kind(pair) {
+                    return Some((pair, kind));
+                }
+            }
+        }
+        None
+    }
+
     /// Finds a valid capturing pincer against `target` occupied by `attacker`-owned
     /// pieces. Crown and Spy attackers only need plain orthogonal adjacency (any of
     /// the 4 sides); Knight attackers additionally need `target` to fall within their
     /// own forward arc — a Knight standing beside or behind `target` cannot form a
     /// Knight Capture pincer, only one standing ahead of or diagonally ahead of it can
-    /// (see `knight_forward_neighbours`). Whether the just-moved piece specifically
+    /// (see `tables::KNIGHT_ARCS`). Whether the just-moved piece specifically
     /// must land diagonally (not just anywhere in the arc) is enforced by callers via
     /// `is_diagonally_forward_of`, not here — this only finds *some* valid pair.
     /// Extra attacker-owned pieces also adjacent to
@@ -268,27 +245,26 @@ impl BoardState {
         target: Cell,
         attacker: PlayerKind,
     ) -> Option<((Cell, Cell), CaptureKind)> {
-        let mut attackers: Vec<Cell> = Self::orthogonal_neighbours(target)
-            .into_iter()
-            .filter(|neighbour| {
-                matches!(self.cells[neighbour.to_index()], Some(piece) if piece.player == attacker && piece.kind != PieceKind::Knight)
-            })
-            .collect();
-        attackers.extend(Self::knight_forward_neighbours(target, attacker.opposite())
-            .into_iter()
-            .filter(|neighbour| {
-                matches!(self.cells[neighbour.to_index()], Some(piece) if piece.player == attacker && piece.kind == PieceKind::Knight)
-            }));
-
-        for i in 0..attackers.len() {
-            for j in (i + 1)..attackers.len() {
-                let pair = (attackers[i], attackers[j]);
-                if let Some(kind) = self.capture_kind(pair) {
-                    return Some((pair, kind));
-                }
+        // At most 4 orthogonal non-Knight attackers + 3 arc Knights.
+        let mut attackers = [0u8; 7];
+        let mut len = 0;
+        for &neighbour in tables::ORTHO[target.to_index()].as_slice() {
+            if matches!(self.cells[neighbour as usize], Some(piece) if piece.player == attacker && piece.kind != PieceKind::Knight)
+            {
+                attackers[len] = neighbour;
+                len += 1;
             }
         }
-        None
+        for &neighbour in tables::KNIGHT_ARCS[attacker.opposite() as usize][target.to_index()]
+            .as_slice()
+        {
+            if matches!(self.cells[neighbour as usize], Some(piece) if piece.player == attacker && piece.kind == PieceKind::Knight)
+            {
+                attackers[len] = neighbour;
+                len += 1;
+            }
+        }
+        self.first_capturing_pair(&attackers[..len])
     }
 
     /// Determines which capture rule (if any) the attacking pair satisfies.
@@ -323,28 +299,25 @@ impl BoardState {
         attacker: PlayerKind,
         moved: Cell,
     ) -> Option<((Cell, Cell), CaptureKind)> {
-        let mut attackers: Vec<Cell> = Self::orthogonal_neighbours(target)
-            .into_iter()
-            .filter(|neighbour| {
-                matches!(self.cells[neighbour.to_index()], Some(piece) if piece.player == attacker)
-            })
-            .collect();
+        // At most 4 orthogonal attackers + the just-moved diagonal Knight.
+        let mut attackers = [0u8; 5];
+        let mut len = 0;
+        for &neighbour in tables::ORTHO[target.to_index()].as_slice() {
+            if matches!(self.cells[neighbour as usize], Some(piece) if piece.player == attacker)
+            {
+                attackers[len] = neighbour;
+                len += 1;
+            }
+        }
 
         if Self::is_diagonally_forward_of(target, moved, attacker)
             && matches!(self.cells[moved.to_index()], Some(piece) if piece.player == attacker && piece.kind == PieceKind::Knight)
         {
-            attackers.push(moved);
+            attackers[len] = moved.to_index() as u8;
+            len += 1;
         }
 
-        for i in 0..attackers.len() {
-            for j in (i + 1)..attackers.len() {
-                let pair = (attackers[i], attackers[j]);
-                if let Some(kind) = self.capture_kind(pair) {
-                    return Some((pair, kind));
-                }
-            }
-        }
-        None
+        self.first_capturing_pair(&attackers[..len])
     }
 
     /// The attacker's own piece other than `moved` in an attacking pair.
@@ -388,17 +361,23 @@ impl BoardState {
     /// Cells a just-moved piece at `to` might now be threatening as an attacker: its
     /// plain orthogonal neighbours, plus — if it's a Knight — its forward arc, since a
     /// Knight's capture reach extends diagonally ahead of it (see
-    /// `knight_forward_neighbours`).
-    fn capture_scan_cells(&self, to: Cell, mover: PlayerKind) -> Vec<Cell> {
-        let mut cells = Self::orthogonal_neighbours(to);
+    /// `tables::KNIGHT_ARCS`).
+    fn capture_scan_cells(&self, to: Cell, mover: PlayerKind) -> ScanCells {
+        let mut cells = [0u8; MAX_SCAN_CELLS];
+        let mut len = 0;
+        for &neighbour in tables::ORTHO[to.to_index()].as_slice() {
+            cells[len] = neighbour;
+            len += 1;
+        }
         if matches!(self.cells[to.to_index()], Some(piece) if piece.kind == PieceKind::Knight) {
-            for cell in Self::knight_forward_neighbours(to, mover) {
-                if !cells.contains(&cell) {
-                    cells.push(cell);
+            for &cell in tables::KNIGHT_ARCS[mover as usize][to.to_index()].as_slice() {
+                if !cells[..len].contains(&cell) {
+                    cells[len] = cell;
+                    len += 1;
                 }
             }
         }
-        cells
+        (cells, len)
     }
 
     /// True unless `mover_piece` is a Knight that just moved to `to` and would be
@@ -417,37 +396,57 @@ impl BoardState {
     }
 
     fn check_crown_capture(&self, to: Cell, attacker: PlayerKind) -> Option<Cell> {
-        self.capture_scan_cells(to, attacker)
-            .into_iter()
-            .find_map(|neighbour| {
-                let piece = self.cells[neighbour.to_index()]?;
-                if piece.player == attacker || piece.kind != PieceKind::Crown {
-                    return None;
-                }
-                self.find_crown_attacking_pair(neighbour, attacker, to)?;
-                Some(neighbour)
-            })
+        let (cells, len) = self.capture_scan_cells(to, attacker);
+        for &index in &cells[..len] {
+            let Some(piece) = self.cells[index as usize] else {
+                continue;
+            };
+            if piece.player == attacker || piece.kind != PieceKind::Crown {
+                continue;
+            }
+            let neighbour = Cell::new_index(index as usize);
+            if self
+                .find_crown_attacking_pair(neighbour, attacker, to)
+                .is_some()
+            {
+                return Some(neighbour);
+            }
+        }
+        None
     }
 
-    fn check_piece_captures(
-        &self,
-        to: Cell,
-        attacker: PlayerKind,
-    ) -> Vec<(Cell, CaptureKind, (Cell, Cell))> {
-        self.capture_scan_cells(to, attacker)
-            .into_iter()
-            .filter_map(|neighbour| {
-                let piece = self.cells[neighbour.to_index()]?;
-                if piece.player == attacker || piece.kind == PieceKind::Crown {
-                    return None;
-                }
-                let (attackers, kind) = self.find_attacking_pair(neighbour, attacker)?;
-                if !self.moved_knight_completes_pincer(to, neighbour, attacker) {
-                    return None;
-                }
-                Some((neighbour, kind, attackers))
-            })
-            .collect()
+    fn check_piece_captures(&self, to: Cell, attacker: PlayerKind) -> PieceCaptures {
+        let placeholder = PieceCapture {
+            target: Cell { index: 0 },
+            kind: CaptureKind::Spy,
+            attackers: (Cell { index: 0 }, Cell { index: 0 }),
+        };
+        let mut captures = [placeholder; MAX_SCAN_CELLS];
+        let mut count = 0;
+        let (cells, len) = self.capture_scan_cells(to, attacker);
+        for &index in &cells[..len] {
+            let Some(piece) = self.cells[index as usize] else {
+                continue;
+            };
+            if piece.player == attacker || piece.kind == PieceKind::Crown {
+                continue;
+            }
+            let target = Cell::new_index(index as usize);
+            // Cheap arc check first — the pair search is the expensive part.
+            if !self.moved_knight_completes_pincer(to, target, attacker) {
+                continue;
+            }
+            let Some((attackers, kind)) = self.find_attacking_pair(target, attacker) else {
+                continue;
+            };
+            captures[count] = PieceCapture {
+                target,
+                kind,
+                attackers,
+            };
+            count += 1;
+        }
+        (captures, count)
     }
 
     /// A player is only out of the fight once both their Knights and Spies are
@@ -484,9 +483,39 @@ impl Game {
     }
 
     pub fn handle_player_action(
-        self,
+        mut self,
         action: PlayerAction,
     ) -> Result<(Game, Option<TurnResult>), GameError> {
+        let result = self.apply_action(action)?;
+        Ok((self, result))
+    }
+
+    /// In-place equivalent of `handle_player_action`: applies `action`
+    /// directly to this game instead of consuming and returning it, so
+    /// callers that would otherwise `clone()` first (every node of the AI
+    /// search, most importantly) don't have to copy the ever-growing
+    /// position `history`. On `Err` the game is guaranteed untouched —
+    /// every validation runs before the first mutation.
+    pub fn apply_action(&mut self, action: PlayerAction) -> Result<Option<TurnResult>, GameError> {
+        self.apply_action_with_logging(action, true)
+    }
+
+    /// Applies `action` without logging the move/capture, used by the AI's search
+    /// (`ai::best_move`/`negamax`) to explore candidate positions — those simulated
+    /// moves aren't real turns and would otherwise drown out actual gameplay in the
+    /// log (see `game::ai`, which calls this instead of `apply_action`).
+    pub(crate) fn apply_action_quiet(
+        &mut self,
+        action: PlayerAction,
+    ) -> Result<Option<TurnResult>, GameError> {
+        self.apply_action_with_logging(action, false)
+    }
+
+    fn apply_action_with_logging(
+        &mut self,
+        action: PlayerAction,
+        log_moves: bool,
+    ) -> Result<Option<TurnResult>, GameError> {
         match &self.state {
             GameState::Playing(play_state) => {
                 if play_state.player() != action.player() {
@@ -497,145 +526,168 @@ impl Game {
             GameState::Draw(_) => return Err(GameError::GameOver(action.player())),
         }
         match action {
-            PlayerAction::Move { player, from, to } => self.handle_move(player, from, to),
-            PlayerAction::KnightRemoval { player, at } => self.handle_knight_removal(player, at),
-            PlayerAction::Surrender { player } => Ok((
-                Game {
-                    board: self.board,
-                    state: GameState::Victory(player.opposite()),
-                    history: self.history,
-                    moves_since_capture: self.moves_since_capture,
-                },
-                None,
-            )),
+            PlayerAction::Move { player, from, to } => {
+                self.apply_move(player, from, to, log_moves)
+            }
+            PlayerAction::KnightRemoval { player, at } => self.apply_knight_removal(player, at),
+            PlayerAction::Surrender { player } => {
+                self.state = GameState::Victory(player.opposite());
+                Ok(None)
+            }
         }
     }
 
-    fn handle_move(
-        mut self,
+    #[cfg_attr(not(feature = "log"), allow(unused_variables))]
+    fn apply_move(
+        &mut self,
         player: PlayerKind,
         from: Cell,
         to: Cell,
-    ) -> Result<(Game, Option<TurnResult>), GameError> {
-        let piece = self.board.cells[from.to_index()].ok_or(GameError::EmptyMove(player, from))?;
+        log_moves: bool,
+    ) -> Result<Option<TurnResult>, GameError> {
+        let from_index = from.to_index();
+        let to_index = to.to_index();
+        // `Cell` is just a deserialized index — reject out-of-range ones here
+        // rather than panicking on a board access (and `to` must be checked
+        // before it's truncated to `u8` for the candidate-table comparison).
+        if from_index >= CELL_COUNT {
+            return Err(GameError::EmptyMove(player, from));
+        }
+        if to_index >= CELL_COUNT {
+            return Err(GameError::InvalidDestination(player, from, to));
+        }
+        let piece = self.board.cells[from_index].ok_or(GameError::EmptyMove(player, from))?;
         if piece.player != player {
             return Err(GameError::EnemyMove(player, from));
         }
-        if !self.board.get_valid_destinations_for(from).contains(&to) {
+        if self.board.cells[to_index].is_some()
+            || !self.board.move_candidates(from).contains(&(to_index as u8))
+        {
             return Err(GameError::InvalidDestination(player, from, to));
         }
 
-        let mut board = self.board.clone();
-        board.cells[from.to_index()] = None;
-        board.cells[to.to_index()] = Some(piece);
+        #[cfg(feature = "log")]
+        if log_moves {
+            log::info!("{player:?} moves {:?} from {from:?} to {to:?}", piece.kind);
+        }
+
+        self.board.cells[from_index] = None;
+        self.board.cells[to_index] = Some(piece);
 
         // Crown-loss has the highest priority of any capture and is checked first,
         // even ahead of a capture this same move would otherwise complete (README
         // "Crown" section — the crown moving into a trap loses the game outright).
-        if board.check_own_crown_trap(to, player) {
-            board.cells[to.to_index()] = None;
-            return Ok((
-                Game {
-                    board,
-                    state: GameState::Victory(player.opposite()),
-                    history: self.history,
-                    moves_since_capture: self.moves_since_capture,
-                },
-                Some(TurnResult::Victory {
-                    player: player.opposite(),
-                    surrounded_crown: to,
-                }),
-            ));
+        if self.board.check_own_crown_trap(to, player) {
+            self.board.cells[to_index] = None;
+            #[cfg(feature = "log")]
+            if log_moves {
+                log::info!("captured: {player:?} Crown at {to:?}");
+            }
+            self.state = GameState::Victory(player.opposite());
+            return Ok(Some(TurnResult::Victory {
+                player: player.opposite(),
+                surrounded_crown: to,
+            }));
         }
 
-        if let Some(surrounded_crown) = board.check_crown_capture(to, player) {
-            board.cells[surrounded_crown.to_index()] = None;
-            return Ok((
-                Game {
-                    board,
-                    state: GameState::Victory(player),
-                    history: self.history,
-                    moves_since_capture: self.moves_since_capture,
-                },
-                Some(TurnResult::Victory {
-                    player,
-                    surrounded_crown,
-                }),
-            ));
+        if let Some(surrounded_crown) = self.board.check_crown_capture(to, player) {
+            self.board.cells[surrounded_crown.to_index()] = None;
+            #[cfg(feature = "log")]
+            if log_moves {
+                log::info!(
+                    "captured: {:?} Crown at {surrounded_crown:?}",
+                    player.opposite()
+                );
+            }
+            self.state = GameState::Victory(player);
+            return Ok(Some(TurnResult::Victory {
+                player,
+                surrounded_crown,
+            }));
         }
 
         // Spy Capture applies "even if the enemy moved there" — the piece just moved
         // can walk straight into a pre-existing enemy Spy pincer and be captured by it.
-        if board.check_self_spy_trap(to, player) {
-            board.cells[to.to_index()] = None;
-            let attackers = board
+        if self.board.check_self_spy_trap(to, player) {
+            self.board.cells[to_index] = None;
+            #[cfg(feature = "log")]
+            if log_moves {
+                log::info!("captured: {player:?} {:?} at {to:?}", piece.kind);
+            }
+            let attackers = self
+                .board
                 .find_attacking_pair(to, player.opposite())
                 .expect("check_self_spy_trap confirmed an attacking pair");
-            let state = if board.is_attrition_defeated(player) {
+            self.state = if self.board.is_attrition_defeated(player) {
                 GameState::Victory(player.opposite())
             } else {
                 resolve_continuation(
-                    &board,
+                    &self.board,
                     player.opposite(),
                     &mut self.history,
                     &mut self.moves_since_capture,
                     true,
                 )
             };
-            return Ok((
-                Game {
-                    board,
-                    state,
-                    history: self.history,
-                    moves_since_capture: self.moves_since_capture,
-                },
-                Some(TurnResult::Capture {
-                    player,
-                    last_move_from: from,
-                    last_move_to: to,
-                    removed: to,
-                    second_attacker: attackers.0.1,
-                }),
-            ));
+            return Ok(Some(TurnResult::Capture {
+                player,
+                last_move_from: from,
+                last_move_to: to,
+                removed: to,
+                second_attacker: attackers.0.1,
+            }));
         }
 
-        let captures = board.check_piece_captures(to, player);
-        if !captures.is_empty() {
+        let (captures, capture_count) = self.board.check_piece_captures(to, player);
+        if capture_count > 0 {
             let mut turn_result = None;
-            for (target, kind, attackers) in captures {
-                let target_kind =
-                    board.cells[target.to_index()].map(|target_piece| target_piece.kind);
-                board.cells[target.to_index()] = None;
-                let second_attacker = BoardState::other_attacker(attackers, to);
+            for capture in &captures[..capture_count] {
+                let target_kind = self.board.cells[capture.target.to_index()]
+                    .map(|target_piece| target_piece.kind);
+                self.board.cells[capture.target.to_index()] = None;
+                #[cfg(feature = "log")]
+                if log_moves {
+                    log::info!(
+                        "captured: {:?} {:?} at {:?}",
+                        player.opposite(),
+                        target_kind.expect("target held a piece before removal"),
+                        capture.target
+                    );
+                }
+                let second_attacker = BoardState::other_attacker(capture.attackers, to);
                 // The attacking player only loses one of their own knights when the
                 // *captured piece itself* was a Knight (README "Knight Capture") — a
                 // Knight+Knight/Knight+Crown pincer capturing a Spy carries no penalty.
-                if kind == CaptureKind::Knight && target_kind == Some(PieceKind::Knight) {
+                if capture.kind == CaptureKind::Knight && target_kind == Some(PieceKind::Knight) {
                     let lost_knight = if piece.kind == PieceKind::Crown {
                         second_attacker
                     } else {
                         to
                     };
-                    board.cells[lost_knight.to_index()] = None;
+                    self.board.cells[lost_knight.to_index()] = None;
+                    #[cfg(feature = "log")]
+                    if log_moves {
+                        log::info!("captured: {player:?} Knight at {lost_knight:?}");
+                    }
                 }
                 let captured_this = TurnResult::Capture {
                     player,
                     last_move_from: from,
                     last_move_to: to,
-                    removed: target,
+                    removed: capture.target,
                     second_attacker,
                 };
                 turn_result.get_or_insert(captured_this);
             }
             let turn_result = turn_result.expect("captures is non-empty");
 
-            let state = if board.is_mutual_knight_exhaustion() {
+            self.state = if self.board.is_mutual_knight_exhaustion() {
                 GameState::Draw(DrawReason::MutualKnightExhaustion)
-            } else if board.is_attrition_defeated(player.opposite()) {
+            } else if self.board.is_attrition_defeated(player.opposite()) {
                 GameState::Victory(player)
             } else {
                 resolve_continuation(
-                    &board,
+                    &self.board,
                     player.opposite(),
                     &mut self.history,
                     &mut self.moves_since_capture,
@@ -643,62 +695,41 @@ impl Game {
                 )
             };
 
-            return Ok((
-                Game {
-                    board,
-                    state,
-                    history: self.history,
-                    moves_since_capture: self.moves_since_capture,
-                },
-                Some(turn_result),
-            ));
+            return Ok(Some(turn_result));
         }
 
-        let state = resolve_continuation(
-            &board,
+        self.state = resolve_continuation(
+            &self.board,
             player.opposite(),
             &mut self.history,
             &mut self.moves_since_capture,
             false,
         );
-        Ok((
-            Game {
-                board,
-                state,
-                history: self.history,
-                moves_since_capture: self.moves_since_capture,
-            },
-            Some(TurnResult::PieceMove { player, from, to }),
-        ))
+        Ok(Some(TurnResult::PieceMove { player, from, to }))
     }
 
-    fn handle_knight_removal(
-        mut self,
+    fn apply_knight_removal(
+        &mut self,
         player: PlayerKind,
         at: Cell,
-    ) -> Result<(Game, Option<TurnResult>), GameError> {
+    ) -> Result<Option<TurnResult>, GameError> {
+        // Same deserialized-index guard as `apply_move`.
+        if at.to_index() >= CELL_COUNT {
+            return Err(GameError::EmptyKnightRemoval(player, at));
+        }
         match self.board.cells[at.to_index()] {
             None => Err(GameError::EmptyKnightRemoval(player, at)),
             Some(cell) => {
                 if cell.player == player {
-                    let mut new_board = self.board.clone();
-                    new_board.cells[at.index] = None;
-                    let state = resolve_continuation(
-                        &new_board,
+                    self.board.cells[at.index] = None;
+                    self.state = resolve_continuation(
+                        &self.board,
                         player.opposite(),
                         &mut self.history,
                         &mut self.moves_since_capture,
                         true,
                     );
-                    Ok((
-                        Game {
-                            board: new_board,
-                            state,
-                            history: self.history,
-                            moves_since_capture: self.moves_since_capture,
-                        },
-                        None,
-                    ))
+                    Ok(None)
                 } else {
                     Err(GameError::EnemyKnightRemoval(player, at))
                 }

@@ -50,6 +50,8 @@ use networking::packet::{GameId, Packet};
 use serde::{Deserialize, Serialize};
 
 fn main() -> Result<()> {
+    env_logger::init();
+
     if std::env::args().any(|x| x == "--reset") {
         let mut prefs = settings();
         prefs.data.username = None;

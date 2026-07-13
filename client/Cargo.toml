@@ -7,9 +7,10 @@ edition.workspace = true
 
 [dependencies]
 serde.workspace = true
-game = {path = "../game"}
+game = {path = "../game", features = ["log"]}
 networking = {path = "../networking"}
 anyhow.workspace = true
 pixels-graphics-lib.workspace = true
 reqwest.workspace = true
 chrono.workspace = true
+env_logger = "0.11"

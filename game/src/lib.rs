@@ -6,6 +6,7 @@ pub mod ai;
 pub mod errors;
 mod hash;
 pub mod impls;
+mod tables;
 
 pub mod prelude {
     pub use crate::errors::*;
@@ -27,7 +28,7 @@ pub const BOARD_LENGTH: usize = 7;
 
 pub const BOARD_SIZE: (usize, usize) = (BOARD_LENGTH, BOARD_LENGTH);
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum PlayState {
     WaitingForInput {
         player: PlayerKind,
@@ -38,7 +39,7 @@ pub enum PlayState {
     },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum GameState {
     Playing(PlayState),
     Victory(PlayerKind),
@@ -75,7 +76,7 @@ pub struct Piece {
     pub player: PlayerKind,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct BoardState {
     #[serde(with = "BigArray")]
     pub cells: [Option<Piece>; BOARD_SIZE.0 * BOARD_SIZE.1],
@@ -116,7 +117,8 @@ impl Cell {
     }
 
     pub fn to_coord(self) -> (usize, usize) {
-        (self.index % BOARD_LENGTH, self.index / BOARD_LENGTH)
+        let (x, y) = tables::COORD[self.index];
+        (x as usize, y as usize)
     }
 }
 
@@ -126,7 +128,7 @@ pub enum PlayerKind {
     Black,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum PlayerAction {
     Move {
         player: PlayerKind,
@@ -142,7 +144,7 @@ pub enum PlayerAction {
     },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TurnResult {
     PieceMove {
         player: PlayerKind,

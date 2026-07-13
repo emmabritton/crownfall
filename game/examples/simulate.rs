@@ -115,7 +115,7 @@ fn play_game(
                     turns,
                 };
             }
-            moves[rng.gen_range(moves.len())].clone()
+            moves[rng.gen_range(moves.len())]
         } else {
             let depth = if player == PlayerKind::White {
                 white_depth

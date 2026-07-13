@@ -15,3 +15,10 @@ edition.workspace = true
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 serde-big-array.workspace = true
 thiserror = { version = "2.0", default-features = false }
+log = { version = "0.4", default-features = false, optional = true }
+
+[features]
+# Off by default: move/capture logging (see impls.rs) is compiled out entirely
+# unless this is enabled, so the `log` dependency is never pulled in for
+# std-less consumers (e.g. GBA) that don't opt in.
+log = ["dep:log"]
