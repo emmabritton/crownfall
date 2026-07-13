@@ -91,3 +91,10 @@ The game ends in a draw, with no winner, if either condition is met:
 2. **No progress:** 40 consecutive turns pass without a capture (the equivalent of chess's 50-move rule — Crownfall has no pawn-equivalent, so "no capture" is the sole progress signal).
 3. **Turn limit:** The game reaches 200 total turns. This is an absolute safety net and applies regardless of repetition or recent captures.
 4. **Mutual knight exhaustion:** A Knight Capture leaves one player with a single Knight and the other with none. Since the Knight Capture rule requires the attacker to also give up one of their own Knights when the captured piece was a Knight, this exchange can hit both sides in the same move — the game is ruled a draw rather than a win for whichever side still has a Knight.
+
+## Playing vs the Computer
+
+Choosing "Play vs AI" from the game list lets you set the computer opponent's:
+
+- **Difficulty** (Easy / Medium / Hard / Very Hard) — how many turns ahead it searches. Higher difficulties see further into forced sequences but take longer to move.
+- **Personality** (Defensive / Balanced / Aggressive) — how it weighs a position. Defensive values holding onto material and advances reluctantly; Aggressive discounts material slightly and leans on mobility and advancing toward your Crown, trading and pushing forward more readily.
