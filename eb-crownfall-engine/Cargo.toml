@@ -5,6 +5,9 @@ authors.workspace = true
 description.workspace = true
 edition.workspace = true
 publish = true
+license-file.workspace = true
+readme.workspace = true
+repository.workspace = true
 
 [dependencies]
 # no_std + alloc: this crate has no hard std dependency, so its own deps are

@@ -29,9 +29,24 @@ jobs:
       - name: test
         run: cargo test
 
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    name: Publish
+    needs: [ check ]
+    runs-on: macOS-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - run: cargo publish --package eb-crownfall-engine --token ${CRATES_TOKEN}
+        env:
+          CRATES_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+
   build_and_release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [check]
+    needs: [publish]
     name: Build and Release
     strategy:
       fail-fast: false
@@ -93,18 +108,3 @@ jobs:
           files: ${{ matrix.name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  publish:
-    if: startsWith(github.ref, 'refs/tags/v')
-    name: Publish
-    needs: [ build_and_release ]
-    runs-on: macOS-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-
-      - run: cargo publish --package eb-crownfall-engine --token ${CRATES_TOKEN}
-        env:
-          CRATES_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
