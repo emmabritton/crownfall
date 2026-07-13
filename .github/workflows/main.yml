@@ -17,13 +17,10 @@ env:
 jobs:
 
   check:
-    runs-on: ubuntu-latest
+    runs-on: aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install linux libs
-        run: sudo apt-get update; sudo apt-get install --no-install-recommends pkg-config build-essential gcc-multilib libudev-dev libjack-jackd2-dev libjack-jackd2-0 libasound2-dev alsa libx11-dev
 
       - name: fmt
         run: cargo fmt --all -- --check
