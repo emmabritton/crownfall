@@ -1,7 +1,9 @@
 use crate::errors::GameError;
+use crate::hash::Fnv1aHasher;
 use crate::*;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use alloc::vec;
+use alloc::vec::Vec;
+use core::hash::{Hash, Hasher};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CaptureKind {
@@ -23,7 +25,7 @@ const NO_PROGRESS_LIMIT: u16 = 40;
 const TOTAL_TURN_LIMIT: u16 = 200;
 
 fn position_hash(board: &BoardState, next_player: PlayerKind) -> u64 {
-    let mut hasher = DefaultHasher::new();
+    let mut hasher = Fnv1aHasher::default();
     board.hash(&mut hasher);
     next_player.hash(&mut hasher);
     hasher.finish()
@@ -210,7 +212,9 @@ impl BoardState {
     /// it's the Knight's *capture* reach: a Knight can only take part in a
     /// Knight Capture pincer against a target that falls within this arc
     /// from its own cell (a Knight directly beside or behind a target does
-    /// not count, only ahead or diagonally ahead of it).
+    /// not count, only ahead or diagonally ahead of it). A Knight that just
+    /// moved must additionally land in one of the two *diagonal* cells to be
+    /// the piece completing the pincer — see `is_diagonally_forward_of`.
     fn knight_forward_neighbours(cell: Cell, player: PlayerKind) -> Vec<Cell> {
         let (x, y) = cell.to_coord();
         let forward_y = y as isize + Self::knight_forward_dir(player);
@@ -228,6 +232,19 @@ impl BoardState {
             .collect()
     }
 
+    /// True if `attacker_cell` is diagonally (not straight) ahead of `target`
+    /// from `attacker`'s forward direction — i.e. one of the two diagonal
+    /// cells in `knight_forward_neighbours(target, attacker.opposite())`,
+    /// excluding the straight-ahead one. A Knight that just moved must land
+    /// here (not merely directly ahead) to be the piece completing a Knight
+    /// Capture pincer — see `check_piece_captures`/`check_crown_capture`.
+    fn is_diagonally_forward_of(target: Cell, attacker_cell: Cell, attacker: PlayerKind) -> bool {
+        let (tx, _) = target.to_coord();
+        let (ax, _) = attacker_cell.to_coord();
+        ax != tx
+            && Self::knight_forward_neighbours(target, attacker.opposite()).contains(&attacker_cell)
+    }
+
     fn piece_count(&self, player: PlayerKind, kind: PieceKind) -> usize {
         self.cells
             .iter()
@@ -241,7 +258,10 @@ impl BoardState {
     /// the 4 sides); Knight attackers additionally need `target` to fall within their
     /// own forward arc — a Knight standing beside or behind `target` cannot form a
     /// Knight Capture pincer, only one standing ahead of or diagonally ahead of it can
-    /// (see `knight_forward_neighbours`). Extra attacker-owned pieces also adjacent to
+    /// (see `knight_forward_neighbours`). Whether the just-moved piece specifically
+    /// must land diagonally (not just anywhere in the arc) is enforced by callers via
+    /// `is_diagonally_forward_of`, not here — this only finds *some* valid pair.
+    /// Extra attacker-owned pieces also adjacent to
     /// `target` (of any kind) must not block a genuine pincer formed by two others.
     fn find_attacking_pair(
         &self,
@@ -288,6 +308,45 @@ impl BoardState {
         }
     }
 
+    /// Finds a valid capturing pincer against the Crown at `target`, occupied by
+    /// `attacker`-owned pieces. Any of the Crown's orthogonally adjacent tiles counts
+    /// unconditionally (any side, whether that piece just moved or was already in
+    /// place) — Crown captures are not bound by the Knight forward-arc restriction the
+    /// way ordinary Knight Captures are. However, a Knight can *also* attack from one
+    /// of its two forward-diagonal cells (outside plain orthogonal adjacency) if —
+    /// and only if — `moved` is that Knight: the diagonal reach only activates for the
+    /// Knight that's actively moving into it this turn, never for one that was
+    /// already sitting there (see README "Captures" — "invalid" example).
+    fn find_crown_attacking_pair(
+        &self,
+        target: Cell,
+        attacker: PlayerKind,
+        moved: Cell,
+    ) -> Option<((Cell, Cell), CaptureKind)> {
+        let mut attackers: Vec<Cell> = Self::orthogonal_neighbours(target)
+            .into_iter()
+            .filter(|neighbour| {
+                matches!(self.cells[neighbour.to_index()], Some(piece) if piece.player == attacker)
+            })
+            .collect();
+
+        if Self::is_diagonally_forward_of(target, moved, attacker)
+            && matches!(self.cells[moved.to_index()], Some(piece) if piece.player == attacker && piece.kind == PieceKind::Knight)
+        {
+            attackers.push(moved);
+        }
+
+        for i in 0..attackers.len() {
+            for j in (i + 1)..attackers.len() {
+                let pair = (attackers[i], attackers[j]);
+                if let Some(kind) = self.capture_kind(pair) {
+                    return Some((pair, kind));
+                }
+            }
+        }
+        None
+    }
+
     /// The attacker's own piece other than `moved` in an attacking pair.
     fn other_attacker(attackers: (Cell, Cell), moved: Cell) -> Cell {
         if attackers.0 == moved {
@@ -319,7 +378,8 @@ impl BoardState {
     fn check_own_crown_trap(&self, at: Cell, mover: PlayerKind) -> bool {
         match self.cells[at.to_index()] {
             Some(piece) if piece.player == mover && piece.kind == PieceKind::Crown => {
-                self.find_attacking_pair(at, mover.opposite()).is_some()
+                self.find_crown_attacking_pair(at, mover.opposite(), at)
+                    .is_some()
             }
             _ => false,
         }
@@ -341,6 +401,21 @@ impl BoardState {
         cells
     }
 
+    /// True unless `mover_piece` is a Knight that just moved to `to` and would be
+    /// completing the pincer against `target` by landing directly (not diagonally)
+    /// ahead of it. A Knight can only be the piece that *springs* a Knight Capture
+    /// pincer if it lands diagonally ahead of the target — a partner Knight already
+    /// in place may sit directly ahead, but the just-moved piece may not (see
+    /// `is_diagonally_forward_of`). Non-Knight movers (Crown, Spy) are unrestricted.
+    fn moved_knight_completes_pincer(&self, to: Cell, target: Cell, attacker: PlayerKind) -> bool {
+        match self.cells[to.to_index()] {
+            Some(piece) if piece.kind == PieceKind::Knight => {
+                Self::is_diagonally_forward_of(target, to, attacker)
+            }
+            _ => true,
+        }
+    }
+
     fn check_crown_capture(&self, to: Cell, attacker: PlayerKind) -> Option<Cell> {
         self.capture_scan_cells(to, attacker)
             .into_iter()
@@ -349,7 +424,7 @@ impl BoardState {
                 if piece.player == attacker || piece.kind != PieceKind::Crown {
                     return None;
                 }
-                self.find_attacking_pair(neighbour, attacker)?;
+                self.find_crown_attacking_pair(neighbour, attacker, to)?;
                 Some(neighbour)
             })
     }
@@ -367,6 +442,9 @@ impl BoardState {
                     return None;
                 }
                 let (attackers, kind) = self.find_attacking_pair(neighbour, attacker)?;
+                if !self.moved_knight_completes_pincer(to, neighbour, attacker) {
+                    return None;
+                }
                 Some((neighbour, kind, attackers))
             })
             .collect()

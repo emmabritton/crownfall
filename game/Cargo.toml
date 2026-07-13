@@ -6,6 +6,12 @@ description.workspace = true
 edition.workspace = true
 
 [dependencies]
-serde.workspace = true
+# no_std + alloc: this crate has no hard std dependency, so its own deps are
+# trimmed to std-free feature sets too (other workspace crates still enable
+# serde/thiserror's std features for themselves; Cargo unifies that within
+# this workspace's build, but `game` alone doesn't require it). Declared
+# directly rather than via `workspace = true` — Cargo forbids a member
+# overriding `default-features` on an inherited dependency.
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 serde-big-array.workspace = true
-thiserror.workspace = true
+thiserror = { version = "2.0", default-features = false }

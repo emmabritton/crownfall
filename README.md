@@ -53,13 +53,68 @@ Two tiles are **adjacent** if they share an edge (orthogonal neighbors only (up,
 
 ### Captures
 
+Lower case = white
+Upper case = black
+
+K = Knight
+S = Spy
+C = Crown
+
 #### Knight Capture
 
-Occurs when a knight is moved into position to pincer an enemy piece alongside a second attacker that's already in place. Unlike a plain orthogonal pincer, a Knight attacker only counts if the target falls within that Knight's forward-facing arc — directly ahead, or diagonally ahead-left/ahead-right — from the Knight's own cell; a Knight standing beside or behind the target does not count. A Crown standing in for a Knight is not bound by this arc and can be on any orthogonal side of the target. The captured piece is removed, and if the enemy piece was a knight the attacking player must remove one of their knights.
+Knights capture diagonally forwards, and they require that another knight is also front of the target.
+When capturing another knight, one of the attackers is removed as well.
+
+```
+k                               k
+K                               KK                                    K
+ K   bottom knight moves up to      this triggers the capture leaving    (attacking knight is also removed)
+ 
+s                               s
+K                               KK                                    KK
+ K   bottom knight moves up to      this triggers the capture leaving   
+ 
+Kk                              Kk
+                                K
+K   bottom knight moves up to        as the second black knight isn't front of the white, nothing happens
+```
+
+When capturing a crown the pieces can be on any two adjacent squares, or diagonally if a knight is capturing, e.g
+```
+valid
+
+Kc K                              KcK
+     right most knight moves left     capturing the crown (crown capture)
+     
+Kc                            Kc
+                                K
+  K                                  capturing the crown (knight capture)
+     bottom knight moves up      
+
+
+invalid
+
+K c                            Kc
+   K                             K   
+     left knight moves right       attempting to trigger a crown capture, but that requires two orthogonal pieces
+
+```
 
 #### Spy Capture
 
 Occurs whenever two spies surround an enemy piece, even if the enemy moved there. The captured piece is removed.
+
+Enemy spy capture is checked before yours, so with this setup:
+```
+s
+ s
+SS
+    moving the left black spy up should trigger a spy capture of the right white spy, but the white spy capture takings priority leaving
+
+s
+ s
+ S 
+```
 
 #### Crown
 
@@ -86,7 +141,7 @@ instead the spies capturing the crown takes priority and black wins.
 
 A player loses immediately if either condition is met:
 
-1. **Crown captured:** The Crown is surrounded by two enemy Spies, by two enemy Knights or by an enemy Knight and Crown. This check has the **highest priority** — if it is ever true, the game ends immediately before any other capture or condition is evaluated.
+1. **Crown captured:** The Crown is surrounded by two enemy Spies, by two enemy Knights or by an enemy Knight and Crown, on any two of its four orthogonally adjacent tiles. Unlike an ordinary Knight Capture, a Crown capture is not bound by the Knight forward-arc restriction at all — a Knight on any side (even directly beside or behind the Crown) counts, and it doesn't matter which piece just moved. This check has the **highest priority** — if it is ever true, the game ends immediately before any other capture or condition is evaluated.
 2. **Attrition:** The player has one or fewer Knights **and** one or fewer Spies remaining. Spy Capture works independently of Knights, so holding spies alone still keeps a player in the fight — attrition only applies once both are nearly gone.
 
 ### Draws

@@ -1,5 +1,6 @@
 //! A minimax (negamax) game-playing AI for local/offline vs-computer play.
 use crate::{BOARD_LENGTH, Cell, Game, GameState, PieceKind, PlayerAction, PlayerKind};
+use alloc::vec::Vec;
 
 /// Manhattan distance is at most 2*(BOARD_LENGTH-1) (opposite corners);
 /// subtracting it from this yields a "closer is bigger" score.

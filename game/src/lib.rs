@@ -1,5 +1,10 @@
+#![no_std]
+
+extern crate alloc;
+
 pub mod ai;
 pub mod errors;
+mod hash;
 pub mod impls;
 
 pub mod prelude {
@@ -7,6 +12,7 @@ pub mod prelude {
     pub use crate::*;
 }
 
+use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 

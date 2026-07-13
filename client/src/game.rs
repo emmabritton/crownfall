@@ -357,13 +357,19 @@ fn draw_status(
         (WHITE, PixelFont::Standard6x7),
     );
     graphics.draw_text(
+        &format!("{} turns remaining", web_game.game.turns_remaining()),
+        TextPos::px(pos + (0, 40)),
+        (WHITE, PixelFont::Standard6x7),
+    );
+
+    graphics.draw_text(
         &state_to_text(
             &web_game.game.state,
             &web_game.white_player_name,
             &web_game.black_player_name,
         ),
-        TextPos::px(pos + (0, 40)),
-        (WHITE, PixelFont::Standard6x7),
+        TextPos::px(pos + (0, 60)),
+        (WHITE, PixelFont::Standard6x7, WrappingStrategy::AtCol(18)),
     );
     // if let Some(result) = last_move {
     //     graphics.draw_text(

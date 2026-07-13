@@ -254,10 +254,17 @@ fn draw_status(game: &Game, graphics: &mut Graphics) {
         TextPos::px(pos + (0, 10)),
         (WHITE, PixelFont::Standard6x7),
     );
+    
     graphics.draw_text(
-        &state_to_text(&game.state),
+        &format!("{} turns remaining", game.turns_remaining()),
         TextPos::px(pos + (0, 40)),
         (WHITE, PixelFont::Standard6x7),
+    );
+
+    graphics.draw_text(
+        &state_to_text(&game.state),
+        TextPos::px(pos + (0, 60)),
+        (WHITE, PixelFont::Standard6x7, WrappingStrategy::AtCol(18)),
     );
 }
 

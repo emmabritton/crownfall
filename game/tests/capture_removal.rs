@@ -144,6 +144,53 @@ fn knight_beside_target_cannot_complete_a_pincer() {
 }
 
 #[test]
+fn knight_moving_directly_ahead_cannot_complete_a_pincer_even_with_diagonal_partner() {
+    // Target Black Knight at (3,3)=24. A White Knight already sits diagonally ahead
+    // at (4,4)=32. White moves a second Knight from (3,5)=38 to (3,4)=31 — directly
+    // ahead of the target. Even though the resulting pair (31 direct + 32 diagonal)
+    // is the same shape as `knight_capture_removes_target_and_one_attacker`, here it's
+    // the *directly-ahead* Knight that just moved, not the diagonal one — so it must
+    // NOT spring the pincer.
+    let mut board = empty_board();
+    board.cells[24] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::Black,
+    });
+    board.cells[32] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
+    board.cells[38] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+
+    let game = Game {
+        board,
+        state: GameState::Playing(PlayState::WaitingForInput {
+            player: PlayerKind::White,
+        }),
+        history: Vec::new(),
+        moves_since_capture: 0,
+    };
+
+    let (game, result) = game
+        .handle_player_action(PlayerAction::Move {
+            player: PlayerKind::White,
+            from: Cell::new_index(38),
+            to: Cell::new_index(31),
+        })
+        .expect("valid move");
+
+    assert!(
+        game.board.cells[24].is_some(),
+        "a Knight that just moved directly ahead of the target cannot spring a Knight Capture pincer"
+    );
+    assert!(!matches!(result, Some(TurnResult::Capture { .. })));
+}
+
+#[test]
 fn knight_capture_removes_target_and_one_attacker() {
     // Target Black Knight at (3,3)=24. White's forward-arc attacker cells against
     // it are the row "behind" it from White's perspective, y=4: (2,4)=30, (3,4)=31,
@@ -398,9 +445,62 @@ fn knight_pincer_capturing_a_spy_loses_no_knight() {
 #[test]
 fn crown_partnered_knight_capture_never_loses_the_crown() {
     // Crown sits beside the target (23, a side cell — fine, the Crown isn't bound by
-    // the Knight forward-arc restriction), while the Knight moves in from directly
-    // behind its own forward-arc cell (3,5)=38 to (3,4)=31, straight ahead of the
-    // target at (3,3)=24.
+    // the Knight forward-arc restriction), while the Knight moves in from (4,5)=39 to
+    // (4,4)=32, diagonally ahead of the target at (3,3)=24 — the just-moved Knight
+    // must land diagonally (not directly) ahead to spring the pincer.
+    let mut board = empty_board();
+    board.cells[24] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::Black,
+    });
+    board.cells[23] = Some(Piece {
+        kind: PieceKind::Crown,
+        player: PlayerKind::White,
+    });
+    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
+    board.cells[39] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+
+    let game = Game {
+        board,
+        state: GameState::Playing(PlayState::WaitingForInput {
+            player: PlayerKind::White,
+        }),
+        history: Vec::new(),
+        moves_since_capture: 0,
+    };
+
+    let (game, _result) = game
+        .handle_player_action(PlayerAction::Move {
+            player: PlayerKind::White,
+            from: Cell::new_index(39),
+            to: Cell::new_index(32),
+        })
+        .expect("valid move");
+
+    assert!(
+        game.board.cells[24].is_none(),
+        "captured target should be removed from the board"
+    );
+    assert_eq!(
+        game.board.cells[23],
+        Some(Piece {
+            kind: PieceKind::Crown,
+            player: PlayerKind::White
+        }),
+        "the Crown should never be the piece lost"
+    );
+}
+
+#[test]
+fn knight_moving_directly_ahead_cannot_complete_a_pincer_even_with_crown_partner() {
+    // Same setup as `crown_partnered_knight_capture_never_loses_the_crown`, except the
+    // Knight moves in from (3,5)=38 to (3,4)=31, straight ahead of the target at
+    // (3,3)=24, instead of diagonally. The Crown's own exemption from the forward-arc
+    // restriction doesn't help here — it's the just-moved Knight landing directly
+    // ahead, not diagonally, so it must not spring the pincer.
     let mut board = empty_board();
     board.cells[24] = Some(Piece {
         kind: PieceKind::Knight,
@@ -425,7 +525,7 @@ fn crown_partnered_knight_capture_never_loses_the_crown() {
         moves_since_capture: 0,
     };
 
-    let (game, _result) = game
+    let (game, result) = game
         .handle_player_action(PlayerAction::Move {
             player: PlayerKind::White,
             from: Cell::new_index(38),
@@ -434,17 +534,10 @@ fn crown_partnered_knight_capture_never_loses_the_crown() {
         .expect("valid move");
 
     assert!(
-        game.board.cells[24].is_none(),
-        "captured target should be removed from the board"
+        game.board.cells[24].is_some(),
+        "a Knight that just moved directly ahead of the target cannot spring a Knight Capture pincer, even with a Crown partner"
     );
-    assert_eq!(
-        game.board.cells[23],
-        Some(Piece {
-            kind: PieceKind::Crown,
-            player: PlayerKind::White
-        }),
-        "the Crown should never be the piece lost"
-    );
+    assert!(!matches!(result, Some(TurnResult::Capture { .. })));
 }
 
 #[test]
@@ -750,4 +843,147 @@ fn crown_walking_into_a_pincer_loses_immediately_even_mid_capture() {
     assert!(
         matches!(result, Some(TurnResult::Victory { player:PlayerKind::Black,surrounded_crown }) if surrounded_crown == Cell::new_index(8))
     );
+}
+
+#[test]
+fn crown_capture_needs_no_knight_arc_any_two_adjacent_sides_count() {
+    // Crown captures are not bound by the Knight forward-arc restriction at all: a
+    // Knight directly below the Crown (3,4)=31 plus a Knight moving in beside it, to
+    // its right (4,3)=25, is enough — even though a Knight "beside" a target is never
+    // a valid attacker for an ordinary Knight Capture (see
+    // `knight_beside_target_cannot_complete_a_pincer`).
+    let mut board = empty_board();
+    board.cells[24] = Some(Piece {
+        kind: PieceKind::Crown,
+        player: PlayerKind::Black,
+    });
+    board.cells[31] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+    board.cells[32] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+
+    let game = Game {
+        board,
+        state: GameState::Playing(PlayState::WaitingForInput {
+            player: PlayerKind::White,
+        }),
+        history: Vec::new(),
+        moves_since_capture: 0,
+    };
+
+    let (game, result) = game
+        .handle_player_action(PlayerAction::Move {
+            player: PlayerKind::White,
+            from: Cell::new_index(32),
+            to: Cell::new_index(25),
+        })
+        .expect("valid move");
+
+    assert_eq!(
+        game.state,
+        GameState::Victory(PlayerKind::White),
+        "two knights on any two of the crown's sides, direct or beside, should capture it"
+    );
+    assert!(game.board.cells[24].is_none(), "the crown should be removed");
+    assert!(
+        matches!(result, Some(TurnResult::Victory { player: PlayerKind::White, surrounded_crown }) if surrounded_crown == Cell::new_index(24))
+    );
+}
+
+#[test]
+fn crown_capture_via_a_knights_diagonal_reach_when_that_knight_just_moved() {
+    // A Knight can attack the Crown from a diagonal cell (outside plain orthogonal
+    // adjacency) if it's the piece that just moved there. Crown (Black) at (3,3)=24,
+    // White Knight already beside it at (2,3)=23, and a second White Knight moves
+    // from (4,5)=39 to (4,4)=32 — diagonally ahead of the Crown, not one of its
+    // orthogonal neighbours — completing the pincer.
+    let mut board = empty_board();
+    board.cells[24] = Some(Piece {
+        kind: PieceKind::Crown,
+        player: PlayerKind::Black,
+    });
+    board.cells[23] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+    board.cells[39] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+
+    let game = Game {
+        board,
+        state: GameState::Playing(PlayState::WaitingForInput {
+            player: PlayerKind::White,
+        }),
+        history: Vec::new(),
+        moves_since_capture: 0,
+    };
+
+    let (game, result) = game
+        .handle_player_action(PlayerAction::Move {
+            player: PlayerKind::White,
+            from: Cell::new_index(39),
+            to: Cell::new_index(32),
+        })
+        .expect("valid move");
+
+    assert_eq!(
+        game.state,
+        GameState::Victory(PlayerKind::White),
+        "a Knight moving into a diagonal-forward cell of the Crown should complete the pincer"
+    );
+    assert!(game.board.cells[24].is_none(), "the crown should be removed");
+    assert!(
+        matches!(result, Some(TurnResult::Victory { player: PlayerKind::White, surrounded_crown }) if surrounded_crown == Cell::new_index(24))
+    );
+}
+
+#[test]
+fn crown_capture_diagonal_reach_does_not_count_for_a_stationary_knight() {
+    // Mirror of the previous test, but the diagonal Knight was already in place
+    // *before* this move — it's a different Knight (the orthogonal one) that just
+    // moved. Per the README "invalid" example, the diagonal reach only activates for
+    // the actively-moving Knight, so this must NOT capture: only one orthogonal
+    // attacker (the mover) is present, and one attacker alone can't complete a pincer.
+    let mut board = empty_board();
+    board.cells[24] = Some(Piece {
+        kind: PieceKind::Crown,
+        player: PlayerKind::Black,
+    });
+    board.cells[32] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+    board.cells[30] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+
+    let game = Game {
+        board,
+        state: GameState::Playing(PlayState::WaitingForInput {
+            player: PlayerKind::White,
+        }),
+        history: Vec::new(),
+        moves_since_capture: 0,
+    };
+
+    let (game, result) = game
+        .handle_player_action(PlayerAction::Move {
+            player: PlayerKind::White,
+            from: Cell::new_index(30),
+            to: Cell::new_index(23),
+        })
+        .expect("valid move");
+
+    assert!(
+        game.board.cells[24].is_some(),
+        "a Knight already sitting diagonally cannot complete a crown pincer unless it's the piece that just moved"
+    );
+    assert!(!matches!(result, Some(TurnResult::Victory { .. })));
 }
