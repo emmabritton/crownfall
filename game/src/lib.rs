@@ -36,6 +36,31 @@ pub enum PlayState {
 pub enum GameState {
     Playing(PlayState),
     Victory(PlayerKind),
+    Draw(DrawReason),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum DrawReason {
+    /// The same position (board + player to move) occurred three times.
+    Repetition,
+    /// No capture occurred for a set number of consecutive turns.
+    NoProgress,
+    /// The game reached the absolute turn-count safety net.
+    TurnLimit,
+    /// A Knight Capture left one player with a single Knight and the other
+    /// with none, both as a result of the same move.
+    MutualKnightExhaustion,
+}
+
+impl DrawReason {
+    pub const fn description(&self) -> &'static str {
+        match self {
+            DrawReason::Repetition => "threefold repetition",
+            DrawReason::NoProgress => "no captures for too long",
+            DrawReason::TurnLimit => "turn limit reached",
+            DrawReason::MutualKnightExhaustion => "both sides out of knights",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -44,7 +69,7 @@ pub struct Piece {
     pub player: PlayerKind,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct BoardState {
     #[serde(with = "BigArray")]
     pub cells: [Option<Piece>; BOARD_SIZE.0 * BOARD_SIZE.1],
@@ -54,6 +79,14 @@ pub struct BoardState {
 pub struct Game {
     pub board: BoardState,
     pub state: GameState,
+    /// Hashes of past positions (board + player to move), used to detect
+    /// threefold repetition. Grows for the lifetime of the game.
+    #[serde(default)]
+    pub history: Vec<u64>,
+    /// Turns played since the last capture, used for the no-progress draw
+    /// rule. Reset to 0 on every capture.
+    #[serde(default)]
+    pub moves_since_capture: u16,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]

@@ -1,7 +1,7 @@
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::net::{poll, send};
 use crate::{BACKGROUND, HEIGHT, SceneName, SceneResult, WIDTH, username};
-use game::{Cell, GameState, PlayState, Piece, PlayerAction, PlayerKind, TurnResult};
+use game::{Cell, GameState, Piece, PlayState, PlayerAction, PlayerKind, TurnResult};
 use networking::models::WebGame;
 use networking::packet::{GameId, NetGameState, Packet, PerformActionState};
 use pixels_graphics_lib::MouseData;
@@ -12,6 +12,7 @@ use pixels_graphics_lib::scenes::SceneUpdateResult::Nothing;
 const BOARD_POS: Coord = Coord::new(16, 16);
 const MOVE_ANIMATION_DURATION: f64 = 0.25;
 
+#[allow(clippy::large_enum_variant)]
 enum GameClientState {
     PreLoad(GameId),
     Loading,
@@ -71,12 +72,10 @@ impl GameScene {
         if let Some(anim) = self.animation.take() {
             self.state = GameClientState::Playing(anim.pending, anim.is_white);
         }
-        let moved_by_other = turn_result.and_then(move_cells).filter(
-            |(player, _, _)| {
-                let mover_is_white = *player == PlayerKind::White;
-                mover_is_white != is_white
-            },
-        );
+        let moved_by_other = turn_result.and_then(move_cells).filter(|(player, _, _)| {
+            let mover_is_white = *player == PlayerKind::White;
+            mover_is_white != is_white
+        });
         if let Some((_, from, to)) = moved_by_other
             && let GameClientState::Playing(current, _) = &self.state
             && let Some(piece) = current.game.board.cells[from.index]
@@ -407,5 +406,6 @@ fn state_to_text(state: &GameState, white_name: &str, black_name: &str) -> Strin
             };
             format!("Victory: {name}")
         }
+        GameState::Draw(reason) => format!("Draw ({})", reason.description()),
     }
 }

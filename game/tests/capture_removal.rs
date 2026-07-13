@@ -39,6 +39,8 @@ fn spy_capture_removes_target_from_board() {
         state: GameState::Playing(PlayState::WaitingForInput {
             player: PlayerKind::White,
         }),
+        history: Vec::new(),
+        moves_since_capture: 0,
     };
 
     let (game, _result) = game
@@ -77,6 +79,8 @@ fn knight_capture_removes_target_and_one_attacker() {
         state: GameState::Playing(PlayState::WaitingForInput {
             player: PlayerKind::White,
         }),
+        history: Vec::new(),
+        moves_since_capture: 0,
     };
 
     let (game, _result) = game
@@ -102,10 +106,11 @@ fn knight_capture_removes_target_and_one_attacker() {
 }
 
 #[test]
-fn attrition_ignores_spy_count() {
+fn high_spy_count_prevents_attrition_despite_low_knight_count() {
     // Black is reduced to one knight by this capture but still holds three
-    // spies. Attrition should trigger on knight count alone (README "Losing
-    // the Game") — spy count must not save (or condemn) a player.
+    // spies. Attrition requires both Knights and Spies to be depleted
+    // (README "Losing the Game") — a strong spy count keeps a player in the
+    // fight even after their knights are nearly gone.
     let mut board = empty_board();
     board.cells[24] = Some(Piece {
         kind: PieceKind::Knight,
@@ -141,6 +146,55 @@ fn attrition_ignores_spy_count() {
         state: GameState::Playing(PlayState::WaitingForInput {
             player: PlayerKind::White,
         }),
+        history: Vec::new(),
+        moves_since_capture: 0,
+    };
+
+    let (game, _result) = game
+        .handle_player_action(PlayerAction::Move {
+            player: PlayerKind::White,
+            from: Cell::new_index(32),
+            to: Cell::new_index(25),
+        })
+        .expect("valid move");
+
+    assert!(
+        matches!(game.state, GameState::Playing(_)),
+        "black should not lose to attrition while still holding three spies, despite being down to one knight"
+    );
+}
+
+#[test]
+fn attrition_triggers_once_both_knights_and_spies_are_depleted() {
+    // Black's only knight is captured by a White Spy+Spy pincer (not a
+    // Knight Capture, so no self-penalty knight loss for White), and Black's
+    // sole spy is untouched. With Black left at zero knights and one spy,
+    // both thresholds are met and White wins by attrition.
+    let mut board = empty_board();
+    board.cells[24] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::Black,
+    });
+    board.cells[6] = Some(Piece {
+        kind: PieceKind::Spy,
+        player: PlayerKind::Black,
+    });
+    board.cells[23] = Some(Piece {
+        kind: PieceKind::Spy,
+        player: PlayerKind::White,
+    });
+    board.cells[32] = Some(Piece {
+        kind: PieceKind::Spy,
+        player: PlayerKind::White,
+    });
+
+    let game = Game {
+        board,
+        state: GameState::Playing(PlayState::WaitingForInput {
+            player: PlayerKind::White,
+        }),
+        history: Vec::new(),
+        moves_since_capture: 0,
     };
 
     let (game, _result) = game
@@ -154,7 +208,53 @@ fn attrition_ignores_spy_count() {
     assert_eq!(
         game.state,
         GameState::Victory(PlayerKind::White),
-        "black should lose to attrition on knight count alone, despite still holding three spies"
+        "black should lose to attrition once both knight and spy counts are at or below one"
+    );
+}
+
+#[test]
+fn mutual_knight_exhaustion_from_the_same_capture_is_a_draw() {
+    // Black holds only one knight; White captures it with a Knight+Knight
+    // pincer, but per the Knight Capture rule the attacker must also give up
+    // one of their own knights since the captured piece was a Knight. That
+    // leaves White with one knight and Black with none — a mutual attrition
+    // hit from the very same move, which should be ruled a draw rather than
+    // an outright win for whichever side still has a knight.
+    let mut board = empty_board();
+    board.cells[24] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::Black,
+    });
+    board.cells[23] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+    board.cells[32] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+
+    let game = Game {
+        board,
+        state: GameState::Playing(PlayState::WaitingForInput {
+            player: PlayerKind::White,
+        }),
+        history: Vec::new(),
+        moves_since_capture: 0,
+    };
+
+    let (game, _result) = game
+        .handle_player_action(PlayerAction::Move {
+            player: PlayerKind::White,
+            from: Cell::new_index(32),
+            to: Cell::new_index(25),
+        })
+        .expect("valid move");
+
+    assert_eq!(
+        game.state,
+        GameState::Draw(DrawReason::MutualKnightExhaustion),
+        "White ends with one knight and Black with none from the same capture — a draw, not a White win"
     );
 }
 
@@ -183,6 +283,8 @@ fn knight_pincer_capturing_a_spy_loses_no_knight() {
         state: GameState::Playing(PlayState::WaitingForInput {
             player: PlayerKind::White,
         }),
+        history: Vec::new(),
+        moves_since_capture: 0,
     };
 
     let (game, _result) = game
@@ -225,6 +327,8 @@ fn crown_partnered_knight_capture_never_loses_the_crown() {
         state: GameState::Playing(PlayState::WaitingForInput {
             player: PlayerKind::White,
         }),
+        history: Vec::new(),
+        moves_since_capture: 0,
     };
 
     let (game, _result) = game
@@ -278,6 +382,8 @@ fn single_move_capturing_two_pieces_removes_both() {
         state: GameState::Playing(PlayState::WaitingForInput {
             player: PlayerKind::White,
         }),
+        history: Vec::new(),
+        moves_since_capture: 0,
     };
 
     let (game, _result) = game
@@ -327,6 +433,8 @@ fn extra_adjacent_attacker_does_not_block_a_valid_pincer() {
         state: GameState::Playing(PlayState::WaitingForInput {
             player: PlayerKind::White,
         }),
+        history: Vec::new(),
+        moves_since_capture: 0,
     };
 
     let (game, result) = game
@@ -368,6 +476,8 @@ fn crown_cannot_stand_in_for_a_spy() {
         state: GameState::Playing(PlayState::WaitingForInput {
             player: PlayerKind::White,
         }),
+        history: Vec::new(),
+        moves_since_capture: 0,
     };
 
     let (game, _result) = game
@@ -386,16 +496,19 @@ fn crown_cannot_stand_in_for_a_spy() {
 
 #[test]
 fn moving_into_a_spy_pincer_captures_the_moved_piece() {
+    // The knight moves straight forward (White's only sideways-free option
+    // now that Knights are forward-only) into a pre-existing Black Spy
+    // pincer at 14/16.
     let mut board = empty_board();
-    board.cells[7] = Some(Piece {
+    board.cells[14] = Some(Piece {
         kind: PieceKind::Spy,
         player: PlayerKind::Black,
     });
-    board.cells[21] = Some(Piece {
+    board.cells[16] = Some(Piece {
         kind: PieceKind::Spy,
         player: PlayerKind::Black,
     });
-    board.cells[15] = Some(Piece {
+    board.cells[22] = Some(Piece {
         kind: PieceKind::Knight,
         player: PlayerKind::White,
     });
@@ -406,23 +519,75 @@ fn moving_into_a_spy_pincer_captures_the_moved_piece() {
         state: GameState::Playing(PlayState::WaitingForInput {
             player: PlayerKind::White,
         }),
+        history: Vec::new(),
+        moves_since_capture: 0,
     };
 
     let (game, result) = game
         .handle_player_action(PlayerAction::Move {
             player: PlayerKind::White,
-            from: Cell::new_index(15),
-            to: Cell::new_index(14),
+            from: Cell::new_index(22),
+            to: Cell::new_index(15),
         })
         .expect("valid move");
 
     assert!(
-        game.board.cells[14].is_none(),
+        game.board.cells[15].is_none(),
         "the moved knight walked into a Spy pincer and should be captured, even though it moved there itself"
     );
     assert!(
-        matches!(result, Some(TurnResult::Capture { removed, .. }) if removed == Cell::new_index(14))
+        matches!(result, Some(TurnResult::Capture { removed, .. }) if removed == Cell::new_index(15))
     );
+}
+
+#[test]
+fn knights_cannot_move_sideways_or_backward() {
+    let mut board = empty_board();
+    board.cells[24] = Some(Piece {
+        kind: PieceKind::Knight,
+        player: PlayerKind::White,
+    });
+
+    let game = Game {
+        board,
+        state: GameState::Playing(PlayState::WaitingForInput {
+            player: PlayerKind::White,
+        }),
+        history: Vec::new(),
+        moves_since_capture: 0,
+    };
+
+    // Sideways (same row) is illegal.
+    assert!(
+        game.clone()
+            .handle_player_action(PlayerAction::Move {
+                player: PlayerKind::White,
+                from: Cell::new_index(24),
+                to: Cell::new_index(23),
+            })
+            .is_err()
+    );
+
+    // Backward (away from the opponent's side) is illegal.
+    assert!(
+        game.clone()
+            .handle_player_action(PlayerAction::Move {
+                player: PlayerKind::White,
+                from: Cell::new_index(24),
+                to: Cell::new_index(31),
+            })
+            .is_err()
+    );
+
+    // Forward-diagonal is legal.
+    let (game, _) = game
+        .handle_player_action(PlayerAction::Move {
+            player: PlayerKind::White,
+            from: Cell::new_index(24),
+            to: Cell::new_index(16),
+        })
+        .expect("forward-diagonal knight move should be legal");
+    assert!(game.board.cells[16].is_some());
 }
 
 #[test]
@@ -454,6 +619,8 @@ fn crown_walking_into_a_pincer_loses_immediately_even_mid_capture() {
         state: GameState::Playing(PlayState::WaitingForInput {
             player: PlayerKind::White,
         }),
+        history: Vec::new(),
+        moves_since_capture: 0,
     };
 
     let (game, result) = game

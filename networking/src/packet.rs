@@ -20,6 +20,7 @@ pub enum PerformActionState {
     InvalidGame,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NetGameState {
     Active(WebGame),

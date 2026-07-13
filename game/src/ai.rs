@@ -43,12 +43,16 @@ pub fn best_move(game: &Game, player: PlayerKind, depth: u8) -> Option<PlayerAct
 }
 
 fn negamax(game: &Game, player: PlayerKind, depth: u8, mut alpha: i32, beta: i32) -> i32 {
-    if let GameState::Victory(winner) = game.state {
-        return if winner == player {
-            VICTORY_SCORE
-        } else {
-            -VICTORY_SCORE
-        };
+    match game.state {
+        GameState::Victory(winner) => {
+            return if winner == player {
+                VICTORY_SCORE
+            } else {
+                -VICTORY_SCORE
+            };
+        }
+        GameState::Draw(_) => return 0,
+        GameState::Playing(_) => {}
     }
     if depth == 0 {
         return evaluate(game, player);

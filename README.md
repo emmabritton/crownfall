@@ -33,9 +33,11 @@ Rows A–B belong to one player; rows F–G belong to the other.
 White goes first.
 
 1. Players alternate turns.
-2. On a turn, a player must move exactly one of their own pieces one tile in an orthogonal direction (up, down, left, or right). Diagonal moves are not permitted.
+2. On a turn, a player must move exactly one of their own pieces one tile:
+   - **Crown and Spies** move in an orthogonal direction (up, down, left, or right). Diagonal moves are not permitted.
+   - **Knights** move forward-only, toward the opponent's starting rows, to any of the (up to) 3 cells in the row directly ahead of them: straight forward, forward-left, or forward-right. Knights cannot move sideways or backward.
 3. A piece may not move onto an occupied tile or off the board.
-4. After a move, any captures that result from the move are resolved immediately (see **Captures**).
+4. After a move, any captures that result from the move are resolved immediately (see **Captures**). Capture adjacency is always orthogonal (see **Adjacency**), regardless of how a piece moved to get there.
 
 ### Adjacency
 
@@ -79,4 +81,13 @@ instead the spies capturing the crown takes priority and black wins.
 A player loses immediately if either condition is met:
 
 1. **Crown captured:** The Crown is surrounded by two enemy Spies, by two enemy Knights or by an enemy Knight and Crown. This check has the **highest priority** — if it is ever true, the game ends immediately before any other capture or condition is evaluated.
-2. **Attrition:** The player has one or fewer Knights remaining.
+2. **Attrition:** The player has one or fewer Knights **and** one or fewer Spies remaining. Spy Capture works independently of Knights, so holding spies alone still keeps a player in the fight — attrition only applies once both are nearly gone.
+
+### Draws
+
+The game ends in a draw, with no winner, if either condition is met:
+
+1. **Threefold repetition:** The same position (board layout and player to move) occurs three times over the course of the game.
+2. **No progress:** 40 consecutive turns pass without a capture (the equivalent of chess's 50-move rule — Crownfall has no pawn-equivalent, so "no capture" is the sole progress signal).
+3. **Turn limit:** The game reaches 200 total turns. This is an absolute safety net and applies regardless of repetition or recent captures.
+4. **Mutual knight exhaustion:** A Knight Capture leaves one player with a single Knight and the other with none. Since the Knight Capture rule requires the attacker to also give up one of their own Knights when the captured piece was a Knight, this exchange can hit both sides in the same move — the game is ruled a draw rather than a win for whichever side still has a Knight.

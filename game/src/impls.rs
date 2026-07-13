@@ -1,10 +1,68 @@
 use crate::errors::GameError;
 use crate::*;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CaptureKind {
     Spy,
     Knight,
+}
+
+/// Number of times a position (board + player to move) must occur for the
+/// game to be declared a draw (matches chess's threefold repetition rule).
+const REPETITION_LIMIT: usize = 3;
+
+/// Turns without a capture before the no-progress draw rule fires (chess's
+/// 50-move rule, adapted — Crownfall has no pawn-equivalent, so "no capture"
+/// is the sole progress signal).
+const NO_PROGRESS_LIMIT: u16 = 40;
+
+/// Absolute turn-count safety net: the game is drawn if it's still going
+/// after this many turns, regardless of repetition or progress.
+const TOTAL_TURN_LIMIT: u16 = 200;
+
+fn position_hash(board: &BoardState, next_player: PlayerKind) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    board.hash(&mut hasher);
+    next_player.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Records the position that's about to be played from and returns the
+/// resulting `GameState` — `Draw` if this exact position has now recurred
+/// `REPETITION_LIMIT` times, if `NO_PROGRESS_LIMIT` turns have passed since
+/// the last capture, or if `TOTAL_TURN_LIMIT` turns have been played in
+/// total; otherwise `Playing` with `next_player` to move.
+fn resolve_continuation(
+    board: &BoardState,
+    next_player: PlayerKind,
+    history: &mut Vec<u64>,
+    moves_since_capture: &mut u16,
+    captured: bool,
+) -> GameState {
+    if captured {
+        *moves_since_capture = 0;
+    } else {
+        *moves_since_capture += 1;
+    }
+
+    let key = position_hash(board, next_player);
+    history.push(key);
+    let repeats = history.iter().filter(|&&h| h == key).count();
+    let turns_played = (history.len() - 1) as u16;
+
+    if repeats >= REPETITION_LIMIT {
+        GameState::Draw(DrawReason::Repetition)
+    } else if *moves_since_capture >= NO_PROGRESS_LIMIT {
+        GameState::Draw(DrawReason::NoProgress)
+    } else if turns_played >= TOTAL_TURN_LIMIT {
+        GameState::Draw(DrawReason::TurnLimit)
+    } else {
+        GameState::Playing(PlayState::WaitingForInput {
+            player: next_player,
+        })
+    }
 }
 
 impl Default for BoardState {
@@ -127,11 +185,15 @@ impl Default for BoardState {
 
 impl Default for Game {
     fn default() -> Self {
+        let board = BoardState::default();
+        let history = vec![position_hash(&board, PlayerKind::White)];
         Self {
-            board: Default::default(),
+            board,
             state: GameState::Playing(PlayState::WaitingForInput {
                 player: PlayerKind::White,
             }),
+            history,
+            moves_since_capture: 0,
         }
     }
 }
@@ -156,12 +218,21 @@ impl PlayState {
 }
 
 impl BoardState {
+    /// Legal move destinations for the piece at `cell`. Knights move
+    /// forward-only, to any of the (up to) 3 empty cells in the row ahead of
+    /// them; every other piece moves orthogonally in any direction.
     pub fn get_valid_destinations_for(&self, cell: Cell) -> Vec<Cell> {
-        if self.cells[cell.to_index()].is_none() {
+        let Some(piece) = self.cells[cell.to_index()] else {
             return Vec::new();
-        }
+        };
 
-        Self::orthogonal_neighbours(cell)
+        let candidates = if piece.kind == PieceKind::Knight {
+            Self::knight_forward_neighbours(cell, piece.player)
+        } else {
+            Self::orthogonal_neighbours(cell)
+        };
+
+        candidates
             .into_iter()
             .filter(|neighbour| self.cells[neighbour.to_index()].is_none())
             .collect()
@@ -183,6 +254,36 @@ impl BoardState {
             neighbours.push(Cell::new_coord(x + 1, y));
         }
         neighbours
+    }
+
+    /// The y-axis direction a player's Knights advance in: Black starts near
+    /// row A (y=0) and advances toward row G (+y); White starts near row G
+    /// and advances toward row A (-y).
+    fn knight_forward_dir(player: PlayerKind) -> isize {
+        match player {
+            PlayerKind::Black => 1,
+            PlayerKind::White => -1,
+        }
+    }
+
+    /// The (up to) 3 cells in the row ahead of a Knight: straight forward,
+    /// forward-left, and forward-right. Unlike every other piece, this
+    /// crosses diagonally — occupancy is filtered by the caller.
+    fn knight_forward_neighbours(cell: Cell, player: PlayerKind) -> Vec<Cell> {
+        let (x, y) = cell.to_coord();
+        let forward_y = y as isize + Self::knight_forward_dir(player);
+        if forward_y < 0 || forward_y as usize >= BOARD_LENGTH {
+            return Vec::new();
+        }
+        let forward_y = forward_y as usize;
+        [-1isize, 0, 1]
+            .into_iter()
+            .filter_map(|dx| {
+                let nx = x as isize + dx;
+                (nx >= 0 && (nx as usize) < BOARD_LENGTH)
+                    .then(|| Cell::new_coord(nx as usize, forward_y))
+            })
+            .collect()
     }
 
     fn piece_count(&self, player: PlayerKind, kind: PieceKind) -> usize {
@@ -305,8 +406,22 @@ impl BoardState {
             .collect()
     }
 
+    /// A player is only out of the fight once both their Knights and Spies are
+    /// depleted — Spy Capture works independently of Knights, so holding
+    /// spies alone is still a real offensive threat (README "Losing the
+    /// Game" — Attrition).
     fn is_attrition_defeated(&self, player: PlayerKind) -> bool {
         self.piece_count(player, PieceKind::Knight) <= 1
+            && self.piece_count(player, PieceKind::Spy) <= 1
+    }
+
+    /// True when a Knight Capture has left one player with a single knight and
+    /// the other with none — the exchange that caused it hit both sides at once,
+    /// so neither is credited with an attrition win; the game is a draw instead.
+    fn is_mutual_knight_exhaustion(&self) -> bool {
+        let white = self.piece_count(PlayerKind::White, PieceKind::Knight);
+        let black = self.piece_count(PlayerKind::Black, PieceKind::Knight);
+        matches!((white, black), (0, 1) | (1, 0))
     }
 }
 
@@ -322,6 +437,7 @@ impl Game {
                 }
             }
             GameState::Victory(_) => return Err(GameError::GameOver(action.player())),
+            GameState::Draw(_) => return Err(GameError::GameOver(action.player())),
         }
         match action {
             PlayerAction::Move { player, from, to } => self.handle_move(player, from, to),
@@ -330,6 +446,8 @@ impl Game {
                 Game {
                     board: self.board,
                     state: GameState::Victory(player.opposite()),
+                    history: self.history,
+                    moves_since_capture: self.moves_since_capture,
                 },
                 None,
             )),
@@ -337,7 +455,7 @@ impl Game {
     }
 
     fn handle_move(
-        self,
+        mut self,
         player: PlayerKind,
         from: Cell,
         to: Cell,
@@ -363,6 +481,8 @@ impl Game {
                 Game {
                     board,
                     state: GameState::Victory(player.opposite()),
+                    history: self.history,
+                    moves_since_capture: self.moves_since_capture,
                 },
                 Some(TurnResult::Victory {
                     player: player.opposite(),
@@ -377,6 +497,8 @@ impl Game {
                 Game {
                     board,
                     state: GameState::Victory(player),
+                    history: self.history,
+                    moves_since_capture: self.moves_since_capture,
                 },
                 Some(TurnResult::Victory {
                     player,
@@ -395,12 +517,21 @@ impl Game {
             let state = if board.is_attrition_defeated(player) {
                 GameState::Victory(player.opposite())
             } else {
-                GameState::Playing(PlayState::WaitingForInput {
-                    player: player.opposite(),
-                })
+                resolve_continuation(
+                    &board,
+                    player.opposite(),
+                    &mut self.history,
+                    &mut self.moves_since_capture,
+                    true,
+                )
             };
             return Ok((
-                Game { board, state },
+                Game {
+                    board,
+                    state,
+                    history: self.history,
+                    moves_since_capture: self.moves_since_capture,
+                },
                 Some(TurnResult::Capture {
                     player,
                     last_move_from: from,
@@ -441,30 +572,51 @@ impl Game {
             }
             let turn_result = turn_result.expect("captures is non-empty");
 
-            let state = if board.is_attrition_defeated(player.opposite()) {
+            let state = if board.is_mutual_knight_exhaustion() {
+                GameState::Draw(DrawReason::MutualKnightExhaustion)
+            } else if board.is_attrition_defeated(player.opposite()) {
                 GameState::Victory(player)
             } else {
-                GameState::Playing(PlayState::WaitingForInput {
-                    player: player.opposite(),
-                })
+                resolve_continuation(
+                    &board,
+                    player.opposite(),
+                    &mut self.history,
+                    &mut self.moves_since_capture,
+                    true,
+                )
             };
 
-            return Ok((Game { board, state }, Some(turn_result)));
+            return Ok((
+                Game {
+                    board,
+                    state,
+                    history: self.history,
+                    moves_since_capture: self.moves_since_capture,
+                },
+                Some(turn_result),
+            ));
         }
 
+        let state = resolve_continuation(
+            &board,
+            player.opposite(),
+            &mut self.history,
+            &mut self.moves_since_capture,
+            false,
+        );
         Ok((
             Game {
                 board,
-                state: GameState::Playing(PlayState::WaitingForInput {
-                    player: player.opposite(),
-                }),
+                state,
+                history: self.history,
+                moves_since_capture: self.moves_since_capture,
             },
             Some(TurnResult::PieceMove { player, from, to }),
         ))
     }
 
     fn handle_knight_removal(
-        self,
+        mut self,
         player: PlayerKind,
         at: Cell,
     ) -> Result<(Game, Option<TurnResult>), GameError> {
@@ -474,12 +626,19 @@ impl Game {
                 if cell.player == player {
                     let mut new_board = self.board.clone();
                     new_board.cells[at.index] = None;
+                    let state = resolve_continuation(
+                        &new_board,
+                        player.opposite(),
+                        &mut self.history,
+                        &mut self.moves_since_capture,
+                        true,
+                    );
                     Ok((
                         Game {
                             board: new_board,
-                            state: GameState::Playing(PlayState::WaitingForInput {
-                                player: player.opposite(),
-                            }),
+                            state,
+                            history: self.history,
+                            moves_since_capture: self.moves_since_capture,
                         },
                         None,
                     ))

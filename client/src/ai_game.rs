@@ -288,5 +288,6 @@ fn state_to_text(state: &GameState) -> String {
             };
             name.to_string()
         }
+        GameState::Draw(reason) => format!("Draw ({})", reason.description()),
     }
 }
