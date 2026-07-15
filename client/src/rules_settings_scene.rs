@@ -72,10 +72,7 @@ const RULESETS: [(RulesetOption, &str); 5] = [
     (RulesetOption::Standard, "Standard"),
     (RulesetOption::Archers, "Archers"),
     (RulesetOption::MandatoryCapture, "Mandatory Capture"),
-    (
-        RulesetOption::AllCapturesProcessed,
-        "All Captures Handled",
-    ),
+    (RulesetOption::AllCapturesProcessed, "All Captures Handled"),
     (RulesetOption::DiagonalKnights, "Diagonal Knights"),
 ];
 
