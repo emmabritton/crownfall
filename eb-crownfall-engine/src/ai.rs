@@ -7,21 +7,19 @@
 //! undo is a couple of stores plus a `Vec::truncate`. This matters on the
 //! GBA's ARM7TDMI, where a per-node heap clone of the history would dwarf
 //! the actual search work.
-use crate::tables::{CELL_COUNT, DIST};
+use crate::tables;
 use crate::{
-    BOARD_LENGTH, CrownfallBoardCell, CrownfallBoardState, CrownfallGame, CrownfallGameState,
-    CrownfallPieceKind, CrownfallPlayerAction, CrownfallPlayerKind,
+    CrownfallBoardCell, CrownfallBoardState, CrownfallGame, CrownfallGameState, CrownfallPieceKind,
+    CrownfallPlayerAction, CrownfallPlayerKind, CrownfallRules,
 };
 
-/// Manhattan distance is at most 2*(BOARD_LENGTH-1) (opposite corners);
-/// subtracting it from this yields a "closer is bigger" score.
-const MAX_DISTANCE: i32 = 2 * (BOARD_LENGTH as i32 - 1);
 const VICTORY_SCORE: i32 = 1000000;
 
-/// Upper bound on one side's legal moves: at most 10 pieces (1 Crown, 6
-/// Knights, 3 Spies — pieces are only ever lost), each with at most 4
-/// destinations.
-const MAX_MOVES: usize = 40;
+/// Upper bound on one side's legal moves across every board size: Grand's
+/// 14 pieces/side (8 Knight + 3 Spy + 1 Crown + 2 Archer), each with at most
+/// 4 destinations, is the largest - a flat stack array sized for the worst
+/// case costs nothing extra on the smaller boards.
+const MAX_MOVES: usize = 64;
 
 /// A side's legal moves as packed (from, to) cell indices — 2 bytes per move
 /// on the stack, so recursion depth stays cheap on the GBA's small stack.
@@ -57,8 +55,9 @@ fn restore(game: &mut CrownfallGame, undo: &Undo) {
 }
 
 /// How many plies the AI searches ahead. Higher sees further into forced
-/// sequences at the cost of move time (7x7 board, ~9 pieces/side keeps the
-/// branching factor low enough for `VeryHard` to still respond quickly).
+/// sequences at the cost of move time (the branching factor stays low
+/// enough on every supported board size for `VeryHard` to still respond
+/// quickly).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CrownfallDifficulty {
     Easy,
@@ -99,6 +98,7 @@ struct Weights {
     crown: i32,
     knight: i32,
     spy: i32,
+    archer: i32,
     mobility: i32,
     crown_proximity: i32,
 }
@@ -110,6 +110,7 @@ impl CrownfallPersonality {
                 crown: 1000,
                 knight: 35,
                 spy: 25,
+                archer: 25,
                 mobility: 1,
                 crown_proximity: 1,
             },
@@ -117,6 +118,7 @@ impl CrownfallPersonality {
                 crown: 1000,
                 knight: 30,
                 spy: 20,
+                archer: 20,
                 mobility: 1,
                 crown_proximity: 2,
             },
@@ -124,6 +126,7 @@ impl CrownfallPersonality {
                 crown: 1000,
                 knight: 25,
                 spy: 15,
+                archer: 15,
                 mobility: 2,
                 crown_proximity: 4,
             },
@@ -145,7 +148,8 @@ pub fn best_move(
     // The one clone of the whole search — every node below mutates this copy
     // in place and rolls it back.
     let mut game = game.clone();
-    let moves = collect_moves(&game.board, player);
+    let rules = game.rules;
+    let moves = collect_moves(&game.board, player, rules);
     let mut best: Option<CrownfallPlayerAction> = None;
     let mut best_score = i32::MIN;
     let mut alpha = i32::MIN + 1;
@@ -205,7 +209,7 @@ fn negamax(
         return evaluate(game, player, personality);
     }
 
-    let moves = collect_moves(&game.board, player);
+    let moves = collect_moves(&game.board, player, game.rules);
     if moves.len == 0 {
         return evaluate(game, player, personality);
     }
@@ -243,20 +247,39 @@ fn negamax(
     best
 }
 
-fn collect_moves(board: &CrownfallBoardState, player: CrownfallPlayerKind) -> MoveList {
+/// Legal moves for `player`, honoring `rules.mandatory_capture`: when set
+/// and at least one capturing move exists anywhere on the board, only
+/// capturing moves are included.
+fn collect_moves(
+    board: &CrownfallBoardState,
+    player: CrownfallPlayerKind,
+    rules: CrownfallRules,
+) -> MoveList {
     let mut list = MoveList {
         moves: [(0, 0); MAX_MOVES],
         len: 0,
     };
-    for index in 0..CELL_COUNT {
-        if let Some(piece) = board.cells[index]
+    let cell_count = tables::cell_count(board.variant());
+    let must_capture = rules.mandatory_capture && board.has_available_capture(player, rules);
+    for index in 0..cell_count {
+        if let Some(piece) = board.cells()[index]
             && piece.player == player
         {
-            for &to in board.move_candidates(CrownfallBoardCell::new_index(index)) {
-                if board.cells[to as usize].is_none() {
-                    list.moves[list.len] = (index as u8, to);
-                    list.len += 1;
+            for &to in board.move_candidates(CrownfallBoardCell::new_index(index), rules) {
+                if board.cells()[to as usize].is_some() {
+                    continue;
                 }
+                if must_capture {
+                    let mut scratch = *board;
+                    scratch.cells_mut()[index] = None;
+                    scratch.cells_mut()[to as usize] = Some(piece);
+                    let to_cell = CrownfallBoardCell::new_index(to as usize);
+                    if !scratch.move_captures_something(to_cell, player, piece.kind, rules) {
+                        continue;
+                    }
+                }
+                list.moves[list.len] = (index as u8, to);
+                list.len += 1;
             }
         }
     }
@@ -264,15 +287,15 @@ fn collect_moves(board: &CrownfallBoardState, player: CrownfallPlayerKind) -> Mo
 }
 
 fn crown_index(board: &CrownfallBoardState, player: CrownfallPlayerKind) -> Option<usize> {
-    board.cells.iter().position(|piece| {
+    board.cells().iter().position(|piece| {
         matches!(piece, Some(piece) if piece.player == player && piece.kind == CrownfallPieceKind::Crown)
     })
 }
 
 /// Static evaluation from `player`'s point of view. Three symmetric terms:
 /// material (piece values), mobility (legal-move-count difference), and
-/// crown proximity (each non-Crown piece scores `MAX_DISTANCE` minus its
-/// `tables::DIST` distance to the enemy Crown, rewarding massing pieces near
+/// crown proximity (each non-Crown piece scores `max_distance` minus its
+/// `tables::dist` distance to the enemy Crown, rewarding massing pieces near
 /// it — the enemy's advance on ours counts against us the same way, keeping
 /// the term zero-sum for negamax). Every term is per-piece additive, so the
 /// whole thing is a single pass over the board (evaluate runs at every leaf
@@ -285,6 +308,10 @@ fn evaluate(
 ) -> i32 {
     let weights = personality.weights();
     let board = &game.board;
+    let variant = board.variant();
+    // Manhattan distance is at most 2*(board_length-1) (opposite corners);
+    // subtracting it from this yields a "closer is bigger" score.
+    let max_distance = 2 * (board.board_length() as i32 - 1);
     // Proximity to a Crown that's already been captured is meaningless, so a
     // missing Crown zeroes that side's proximity term.
     let own_crown = crown_index(board, player);
@@ -293,7 +320,7 @@ fn evaluate(
     let mut material = 0;
     let mut mobility = 0;
     let mut proximity = 0;
-    for (index, &cell) in board.cells.iter().enumerate() {
+    for (index, &cell) in board.cells().iter().enumerate() {
         let Some(piece) = cell else {
             continue;
         };
@@ -305,10 +332,11 @@ fn evaluate(
                 CrownfallPieceKind::Crown => weights.crown,
                 CrownfallPieceKind::Knight => weights.knight,
                 CrownfallPieceKind::Spy => weights.spy,
+                CrownfallPieceKind::Archer => weights.archer,
             };
 
-        for &to in board.move_candidates(CrownfallBoardCell::new_index(index)) {
-            if board.cells[to as usize].is_none() {
+        for &to in board.move_candidates(CrownfallBoardCell::new_index(index), game.rules) {
+            if board.cells()[to as usize].is_none() {
                 mobility += sign;
             }
         }
@@ -316,7 +344,7 @@ fn evaluate(
         if piece.kind != CrownfallPieceKind::Crown {
             let target_crown = if mine { enemy_crown } else { own_crown };
             if let Some(crown) = target_crown {
-                proximity += sign * (MAX_DISTANCE - DIST[crown][index] as i32);
+                proximity += sign * (max_distance - tables::dist(variant, crown, index) as i32);
             }
         }
     }

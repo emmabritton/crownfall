@@ -35,12 +35,12 @@ impl Rng {
 
 fn legal_moves(game: &CrownfallGame, player: CrownfallPlayerKind) -> Vec<CrownfallPlayerAction> {
     let mut moves = Vec::new();
-    for index in 0..game.board.cells.len() {
-        if let Some(piece) = game.board.cells[index]
+    for index in 0..game.board.cells().len() {
+        if let Some(piece) = game.board.cells()[index]
             && piece.player == player
         {
             let from = CrownfallBoardCell::new_index(index);
-            for to in game.board.get_valid_destinations_for(from) {
+            for to in game.board.get_valid_destinations_for(from, game.rules) {
                 moves.push(CrownfallPlayerAction::Move { player, from, to });
             }
         }

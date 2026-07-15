@@ -17,4 +17,6 @@ pub enum CrownfallError {
     EnemyMove(CrownfallPlayerKind, CrownfallBoardCell),
     #[error("Player {0:?} tried to move from {1:?} to invalid destination {2:?}")]
     InvalidDestination(CrownfallPlayerKind, CrownfallBoardCell, CrownfallBoardCell),
+    #[error("Player {0:?} must play a capturing move this turn")]
+    CaptureRequired(CrownfallPlayerKind),
 }

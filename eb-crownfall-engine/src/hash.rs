@@ -13,10 +13,12 @@ const FNV_PRIME: u64 = 0x100000001b3;
 /// compare equal for the threefold-repetition rule iff both match.
 pub(crate) fn position_hash(board: &CrownfallBoardState, next_player: CrownfallPlayerKind) -> u64 {
     let mut hash = FNV_OFFSET_BASIS;
-    for cell in &board.cells {
+    for cell in board.cells() {
         let byte = match cell {
             None => 0u8,
-            Some(piece) => 1 + piece.kind as u8 + 3 * piece.player as u8,
+            // 4 possible kinds, so the player multiplier must be >= 4 to keep
+            // every (kind, player) combination mapped to a distinct byte.
+            Some(piece) => 1 + piece.kind as u8 + 4 * piece.player as u8,
         };
         hash ^= byte as u64;
         hash = hash.wrapping_mul(FNV_PRIME);

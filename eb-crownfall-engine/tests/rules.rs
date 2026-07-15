@@ -15,8 +15,10 @@ use eb_crownfall_engine::*;
 // Helpers
 // ---------------------------------------------------------------------
 
+const VARIANT: CrownfallBoardVariant = CrownfallBoardVariant::Normal;
+
 fn empty_board() -> CrownfallBoardState {
-    CrownfallBoardState { cells: [None; 49] }
+    CrownfallBoardState::empty(VARIANT)
 }
 
 fn place(
@@ -26,18 +28,19 @@ fn place(
     kind: CrownfallPieceKind,
     player: CrownfallPlayerKind,
 ) {
-    board.cells[CrownfallBoardCell::new_coord(x, y).to_index()] =
+    board.cells_mut()[CrownfallBoardCell::new_coord(x, y, VARIANT).to_index()] =
         Some(CrownfallPiece { kind, player });
 }
 
 fn piece_at(board: &CrownfallBoardState, x: usize, y: usize) -> Option<CrownfallPiece> {
-    board.cells[CrownfallBoardCell::new_coord(x, y).to_index()]
+    board.cells()[CrownfallBoardCell::new_coord(x, y, VARIANT).to_index()]
 }
 
 fn game_with(board: CrownfallBoardState, player: CrownfallPlayerKind) -> CrownfallGame {
     CrownfallGame {
         board,
         state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput { player }),
+        rules: CrownfallRules::standard(),
         history: vec![0u64],
         moves_since_capture: 0,
     }
@@ -51,8 +54,8 @@ fn mv(
 ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
     game.apply_action(CrownfallPlayerAction::Move {
         player,
-        from: CrownfallBoardCell::new_coord(from.0, from.1),
-        to: CrownfallBoardCell::new_coord(to.0, to.1),
+        from: CrownfallBoardCell::new_coord(from.0, from.1, VARIANT),
+        to: CrownfallBoardCell::new_coord(to.0, to.1, VARIANT),
     })
 }
 
@@ -68,10 +71,10 @@ fn board_length_and_cell_conversions_round_trip() {
     assert_eq!(BOARD_LENGTH, 7);
     for y in 0..BOARD_LENGTH {
         for x in 0..BOARD_LENGTH {
-            let cell = CrownfallBoardCell::new_coord(x, y);
-            assert_eq!(cell.to_coord(), (x, y));
+            let cell = CrownfallBoardCell::new_coord(x, y, VARIANT);
+            assert_eq!(cell.to_coord(VARIANT), (x, y));
             assert_eq!(
-                CrownfallBoardCell::new_index(cell.to_index()).to_coord(),
+                CrownfallBoardCell::new_index(cell.to_index()).to_coord(VARIANT),
                 (x, y)
             );
         }
@@ -83,19 +86,19 @@ fn default_board_has_correct_piece_counts_and_positions() {
     let board = CrownfallBoardState::default();
     for player in [White, Black] {
         let crowns = board
-            .cells
+            .cells()
             .iter()
             .flatten()
             .filter(|p| p.player == player && p.kind == Crown)
             .count();
         let knights = board
-            .cells
+            .cells()
             .iter()
             .flatten()
             .filter(|p| p.player == player && p.kind == Knight)
             .count();
         let spies = board
-            .cells
+            .cells()
             .iter()
             .flatten()
             .filter(|p| p.player == player && p.kind == Spy)
@@ -160,9 +163,12 @@ fn spy_and_crown_move_orthogonally_in_any_direction() {
     let mut board = empty_board();
     place(&mut board, 3, 3, Spy, White);
     let mut dests: Vec<_> = board
-        .get_valid_destinations_for(CrownfallBoardCell::new_coord(3, 3))
+        .get_valid_destinations_for(
+            CrownfallBoardCell::new_coord(3, 3, VARIANT),
+            CrownfallRules::standard(),
+        )
         .into_iter()
-        .map(|c| c.to_coord())
+        .map(|c| c.to_coord(VARIANT))
         .collect();
     dests.sort();
     assert_eq!(dests, vec![(2, 3), (3, 2), (3, 4), (4, 3)]);
@@ -173,9 +179,12 @@ fn crown_moves_like_a_spy() {
     let mut board = empty_board();
     place(&mut board, 3, 3, Crown, Black);
     let mut dests: Vec<_> = board
-        .get_valid_destinations_for(CrownfallBoardCell::new_coord(3, 3))
+        .get_valid_destinations_for(
+            CrownfallBoardCell::new_coord(3, 3, VARIANT),
+            CrownfallRules::standard(),
+        )
         .into_iter()
-        .map(|c| c.to_coord())
+        .map(|c| c.to_coord(VARIANT))
         .collect();
     dests.sort();
     assert_eq!(dests, vec![(2, 3), (3, 2), (3, 4), (4, 3)]);
@@ -187,9 +196,12 @@ fn knight_cannot_move_backward_or_diagonally() {
     // White advances toward y=0, so backward is +y.
     place(&mut board, 3, 3, Knight, White);
     let mut dests: Vec<_> = board
-        .get_valid_destinations_for(CrownfallBoardCell::new_coord(3, 3))
+        .get_valid_destinations_for(
+            CrownfallBoardCell::new_coord(3, 3, VARIANT),
+            CrownfallRules::standard(),
+        )
         .into_iter()
-        .map(|c| c.to_coord())
+        .map(|c| c.to_coord(VARIANT))
         .collect();
     dests.sort();
     // Forward (3,2), left (2,3), right (4,3) - never backward (3,4), never diagonal.
@@ -201,9 +213,12 @@ fn black_knight_backward_is_toward_y_zero() {
     let mut board = empty_board();
     place(&mut board, 3, 3, Knight, Black);
     let mut dests: Vec<_> = board
-        .get_valid_destinations_for(CrownfallBoardCell::new_coord(3, 3))
+        .get_valid_destinations_for(
+            CrownfallBoardCell::new_coord(3, 3, VARIANT),
+            CrownfallRules::standard(),
+        )
         .into_iter()
-        .map(|c| c.to_coord())
+        .map(|c| c.to_coord(VARIANT))
         .collect();
     dests.sort();
     // Black forward is +y, so (3,2) [backward] is excluded.
@@ -215,8 +230,11 @@ fn pieces_cannot_move_onto_occupied_tiles() {
     let mut board = empty_board();
     place(&mut board, 3, 3, Spy, White);
     place(&mut board, 3, 2, Spy, Black);
-    let dests = board.get_valid_destinations_for(CrownfallBoardCell::new_coord(3, 3));
-    assert!(!dests.iter().any(|c| c.to_coord() == (3, 2)));
+    let dests = board.get_valid_destinations_for(
+        CrownfallBoardCell::new_coord(3, 3, VARIANT),
+        CrownfallRules::standard(),
+    );
+    assert!(!dests.iter().any(|c| c.to_coord(VARIANT) == (3, 2)));
 }
 
 #[test]
@@ -224,9 +242,12 @@ fn corner_piece_has_only_two_destinations() {
     let mut board = empty_board();
     place(&mut board, 0, 0, Spy, White);
     let mut dests: Vec<_> = board
-        .get_valid_destinations_for(CrownfallBoardCell::new_coord(0, 0))
+        .get_valid_destinations_for(
+            CrownfallBoardCell::new_coord(0, 0, VARIANT),
+            CrownfallRules::standard(),
+        )
         .into_iter()
-        .map(|c| c.to_coord())
+        .map(|c| c.to_coord(VARIANT))
         .collect();
     dests.sort();
     assert_eq!(dests, vec![(0, 1), (1, 0)]);
@@ -246,8 +267,8 @@ fn legal_move_updates_board_and_switches_turn() {
         result,
         Some(CrownfallTurnResult::PieceMove {
             player: White,
-            from: CrownfallBoardCell::new_coord(3, 3),
-            to: CrownfallBoardCell::new_coord(3, 2),
+            from: CrownfallBoardCell::new_coord(3, 3, VARIANT),
+            to: CrownfallBoardCell::new_coord(3, 2, VARIANT),
         })
     );
     assert_eq!(piece_at(&game.board, 3, 3), None);
@@ -365,8 +386,8 @@ fn handle_player_action_is_equivalent_to_apply_action() {
     let game = game_with(board, White);
     let action = CrownfallPlayerAction::Move {
         player: White,
-        from: CrownfallBoardCell::new_coord(3, 3),
-        to: CrownfallBoardCell::new_coord(3, 2),
+        from: CrownfallBoardCell::new_coord(3, 3, VARIANT),
+        to: CrownfallBoardCell::new_coord(3, 2, VARIANT),
     };
     let (new_game, result) = game.handle_player_action(action).unwrap();
     assert_eq!(
@@ -400,7 +421,7 @@ fn knight_capture_valid_diagonal_arc() {
     let result = mv(&mut game, White, (2, 5), (2, 4)).unwrap();
     assert!(matches!(
         result,
-        Some(CrownfallTurnResult::Capture { player: White, removed, .. }) if removed.to_coord() == (3, 3)
+        Some(CrownfallTurnResult::Capture { player: White, removed, .. }) if removed.to_coord(VARIANT) == (3, 3)
     ));
     assert_eq!(piece_at(&game.board, 3, 3), None, "target knight captured");
     assert_eq!(
@@ -518,7 +539,7 @@ fn spy_capture_of_a_spy_removes_target_with_no_sacrifice() {
     let result = mv(&mut game, Black, (2, 2), (2, 3)).unwrap();
     assert!(matches!(
         result,
-        Some(CrownfallTurnResult::Capture { player: Black, removed, .. }) if removed.to_coord() == (3, 3)
+        Some(CrownfallTurnResult::Capture { player: Black, removed, .. }) if removed.to_coord(VARIANT) == (3, 3)
     ));
     assert_eq!(piece_at(&game.board, 3, 3), None);
     assert_eq!(
@@ -587,7 +608,7 @@ fn crown_capture_via_two_orthogonal_attackers() {
     let result = mv(&mut game, White, (4, 4), (4, 3)).unwrap();
     assert!(matches!(
         result,
-        Some(CrownfallTurnResult::Victory { player: White, surrounded_crown }) if surrounded_crown.to_coord() == (3, 3)
+        Some(CrownfallTurnResult::Victory { player: White, surrounded_crown }) if surrounded_crown.to_coord(VARIANT) == (3, 3)
     ));
     assert_eq!(piece_at(&game.board, 3, 3), None);
     assert_eq!(game.state, CrownfallGameState::Victory(White));
@@ -675,7 +696,7 @@ fn own_crown_walking_into_a_pincer_loses_immediately() {
     let result = mv(&mut game, White, (3, 4), (3, 3)).unwrap();
     assert!(matches!(
         result,
-        Some(CrownfallTurnResult::Victory { player: Black, surrounded_crown }) if surrounded_crown.to_coord() == (3, 3)
+        Some(CrownfallTurnResult::Victory { player: Black, surrounded_crown }) if surrounded_crown.to_coord(VARIANT) == (3, 3)
     ));
     assert_eq!(game.state, CrownfallGameState::Victory(Black));
     assert_eq!(piece_at(&game.board, 3, 3), None);
@@ -719,7 +740,7 @@ fn own_piece_walking_into_a_spy_pincer_is_captured() {
     let result = mv(&mut game, White, (3, 4), (3, 3)).unwrap();
     assert!(matches!(
         result,
-        Some(CrownfallTurnResult::Capture { player: White, removed, .. }) if removed.to_coord() == (3, 3)
+        Some(CrownfallTurnResult::Capture { player: White, removed, .. }) if removed.to_coord(VARIANT) == (3, 3)
     ));
     assert_eq!(piece_at(&game.board, 3, 3), None);
     assert_eq!(
