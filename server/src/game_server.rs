@@ -52,8 +52,8 @@ impl GameServer {
                             self.server_app
                                 .send_to(client_id, &Packet::PendingListResponse(list))?;
                         }
-                        Packet::CreateGameRequest => {
-                            let response = self.app_state.create_game(client_id);
+                        Packet::CreateGameRequest(rules) => {
+                            let response = self.app_state.create_game(client_id, rules);
                             self.server_app
                                 .send_to(client_id, &Packet::CreateGameResponse(response))?;
                         }

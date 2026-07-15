@@ -1,12 +1,11 @@
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::{BACKGROUND, SceneName, SceneResult};
 use eb_crownfall_engine::ai::{CrownfallDifficulty, CrownfallPersonality, best_move};
-use eb_crownfall_engine::{CrownfallBoardCell, CrownfallBoardState, CrownfallBoardVariant, CrownfallGame, CrownfallGameState, CrownfallPiece, CrownfallPlayState, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallRules, CrownfallTurnResult};
+use eb_crownfall_engine::{CrownfallBoardCell, CrownfallBoardVariant, CrownfallGame, CrownfallGameState, CrownfallPiece, CrownfallPlayState, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallRules, CrownfallTurnResult};
 use pixels_graphics_lib::MouseData;
 use pixels_graphics_lib::buffer_graphics_lib::Graphics;
 use pixels_graphics_lib::prelude::*;
 use pixels_graphics_lib::scenes::SceneUpdateResult::Nothing;
-use eb_crownfall_engine::impls::grand_layout;
 
 const BOARD_POS: Coord = Coord::new(6,6);
 const HUMAN: CrownfallPlayerKind = CrownfallPlayerKind::White;
@@ -33,6 +32,7 @@ struct MoveAnimation {
 
 pub struct AiGameScene {
     game: CrownfallGame,
+    rules: CrownfallRules,
     difficulty: CrownfallDifficulty,
     personality: CrownfallPersonality,
     drag: Option<DragState>,
@@ -47,11 +47,13 @@ impl AiGameScene {
     pub fn new(
         difficulty: CrownfallDifficulty,
         personality: CrownfallPersonality,
+        rules: CrownfallRules,
     ) -> Box<AiGameScene> {
-        let game = CrownfallGame::new(CrownfallRules::standard());
+        let game = CrownfallGame::new(rules);
         Box::new(AiGameScene {
             board_renderer: BoardRenderer::new(BOARD_POS, game.board.board_length()),
             game,
+            rules,
             difficulty,
             personality,
             drag: None,
@@ -245,7 +247,7 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
     }
 
     fn resuming(&mut self, _: Option<SceneResult>) {
-        self.game = CrownfallGame::default();
+        self.game = CrownfallGame::new(self.rules);
         self.drag = None;
         self.ai_timer = None;
         self.animation = None;

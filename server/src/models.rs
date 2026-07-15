@@ -1,6 +1,6 @@
 use chrono::Utc;
 use eb_crownfall_engine::{
-    CrownfallGame, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult,
+    CrownfallGame, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallRules, CrownfallTurnResult,
 };
 use networking::models::{PendingGame, WebGame};
 use networking::packet::{PendingGameState, PerformActionState, Username};
@@ -75,7 +75,7 @@ impl AppState {
         self.pending.iter().map(|(_,s)| s.game.clone()).collect()
     }
 
-    pub fn create_game(&mut self, client_id: ClientId) -> Option<PendingGame> {
+    pub fn create_game(&mut self, client_id: ClientId, rules: CrownfallRules) -> Option<PendingGame> {
         if self.game_count() >= self.max_games {
             return None;
         }
@@ -89,7 +89,7 @@ impl AppState {
                 .cloned()
                 .unwrap_or_default(),
             created: Utc::now(),
-            rules: Default::default(),
+            rules,
         };
         let server_game = ServerPendingGame {
             white_player: client_id,
@@ -114,7 +114,7 @@ impl AppState {
         let active_game = ServerActiveGame {
             game: WebGame {
                 id: id.to_string(),
-                game: CrownfallGame::default(),
+                game: CrownfallGame::new(pending.game.rules),
                 white_player_name,
                 black_player_name: username,
             },

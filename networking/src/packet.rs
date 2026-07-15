@@ -1,6 +1,6 @@
 use crate::error::NetworkingError;
 use crate::models::{PendingGame, WebGame};
-use eb_crownfall_engine::{CrownfallPlayerAction, CrownfallTurnResult};
+use eb_crownfall_engine::{CrownfallPlayerAction, CrownfallRules, CrownfallTurnResult};
 use serde::{Deserialize, Serialize};
 
 pub type GameId = String;
@@ -38,7 +38,7 @@ pub enum Packet {
     //return list of pending games
     PendingListResponse(Vec<PendingGame>),
     //create game
-    CreateGameRequest,
+    CreateGameRequest(CrownfallRules),
     //get pending game if it worked
     CreateGameResponse(Option<PendingGame>),
     //join a game

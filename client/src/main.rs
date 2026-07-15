@@ -5,11 +5,14 @@ mod game_list_scene;
 mod game_renderer;
 mod login;
 mod net;
+mod rules_settings_scene;
 
 use crate::ai_game::AiGameScene;
 use crate::ai_settings_scene::AiSettingsScene;
 use crate::game::GameScene;
 use crate::game_list_scene::GameListScene;
+use crate::rules_settings_scene::{RulesPurpose, RulesSettingsScene};
+use ::eb_crownfall_engine::CrownfallRules;
 use ::eb_crownfall_engine::ai::{CrownfallDifficulty, CrownfallPersonality};
 use anyhow::Result;
 use pixels_graphics_lib::prelude::*;
@@ -84,8 +87,11 @@ fn main() -> Result<()> {
                 scene_stack.push(GameScene::new(game_id, board_length));
             }
             SceneName::AiSettings => scene_stack.push(AiSettingsScene::new(style)),
-            SceneName::AiGame(difficulty, personality) => {
-                scene_stack.push(AiGameScene::new(difficulty, personality))
+            SceneName::RulesSettings(purpose) => {
+                scene_stack.push(RulesSettingsScene::new(style, purpose))
+            }
+            SceneName::AiGame(difficulty, personality, rules) => {
+                scene_stack.push(AiGameScene::new(difficulty, personality, rules))
             }
         };
     run_scenes(
@@ -115,8 +121,12 @@ enum SceneName {
     Game(GameId, usize),
     RejoinGame(GameId, usize),
     AiSettings,
-    AiGame(CrownfallDifficulty, CrownfallPersonality),
+    RulesSettings(RulesPurpose),
+    AiGame(CrownfallDifficulty, CrownfallPersonality, CrownfallRules),
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum SceneResult {}
+enum SceneResult {
+    GameCreationRequested,
+    GameCreationFailed(String),
+}

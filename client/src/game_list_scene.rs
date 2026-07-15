@@ -1,5 +1,6 @@
 use crate::BACKGROUND;
 use crate::net::{poll, send};
+use crate::rules_settings_scene::RulesPurpose;
 use crate::{HEIGHT, SceneName, SceneResult, WIDTH};
 use chrono::Local;
 use networking::models::PendingGame;
@@ -151,11 +152,10 @@ impl Scene<SceneResult, SceneName> for GameListScene {
             }
 
             if self.create_button.on_mouse_click(down_at, mouse.xy) {
-                if let Err(e) = send(Packet::CreateGameRequest) {
-                    self.state = GameListState::Error(format!("{:?}", e));
-                } else {
-                    self.state = GameListState::Creating;
-                }
+                self.result = SceneUpdateResult::Push(
+                    false,
+                    SceneName::RulesSettings(RulesPurpose::CreateGame),
+                );
             }
             if self.ai_button.on_mouse_click(down_at, mouse.xy) {
                 self.result = SceneUpdateResult::Push(false, SceneName::AiSettings);
@@ -274,8 +274,12 @@ impl Scene<SceneResult, SceneName> for GameListScene {
         self.result.clone()
     }
 
-    fn resuming(&mut self, _: Option<SceneResult>) {
+    fn resuming(&mut self, result: Option<SceneResult>) {
         self.result = Nothing;
-        self.state = GameListState::PreLoad;
+        self.state = match result {
+            Some(SceneResult::GameCreationRequested) => GameListState::Creating,
+            Some(SceneResult::GameCreationFailed(e)) => GameListState::Error(e),
+            None => GameListState::PreLoad,
+        };
     }
 }

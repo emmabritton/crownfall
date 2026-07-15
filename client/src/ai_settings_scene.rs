@@ -1,4 +1,5 @@
 use crate::BACKGROUND;
+use crate::rules_settings_scene::RulesPurpose;
 use crate::{SceneName, SceneResult};
 use eb_crownfall_engine::ai::{CrownfallDifficulty, CrownfallPersonality};
 use pixels_graphics_lib::prelude::SceneUpdateResult::Nothing;
@@ -121,10 +122,10 @@ impl Scene<SceneResult, SceneName> for AiSettingsScene {
         if self.start_button.on_mouse_click(down_at, mouse.xy) {
             self.result = SceneUpdateResult::Push(
                 false,
-                SceneName::AiGame(
+                SceneName::RulesSettings(RulesPurpose::AiGame(
                     *self.difficulty_buttons.get_selected(),
                     *self.personality_buttons.get_selected(),
-                ),
+                )),
             );
         }
     }
