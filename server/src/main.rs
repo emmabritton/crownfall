@@ -30,6 +30,8 @@ fn init() -> Result<ServerApp, NetworkingError> {
 }
 
 fn main() -> Result<(), NetworkingError> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warning")).init();
+
     let max_games: usize = std::env::var("MAX_GAMES")
         .unwrap_or("10".to_string())
         .parse()

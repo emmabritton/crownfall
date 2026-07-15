@@ -7,12 +7,12 @@
 //! undo is a couple of stores plus a `Vec::truncate`. This matters on the
 //! GBA's ARM7TDMI, where a per-node heap clone of the history would dwarf
 //! the actual search work.
-use crate::{tables, CrownfallRuleset};
 use crate::{
     CrownfallBoardCell, CrownfallBoardState, CrownfallBoardVariant, CrownfallGame,
     CrownfallGameState, CrownfallPiece, CrownfallPieceKind, CrownfallPlayerAction,
     CrownfallPlayerKind, CrownfallRules,
 };
+use crate::{CrownfallRuleset, tables};
 
 const VICTORY_SCORE: i32 = 1000000;
 
@@ -236,7 +236,7 @@ fn negamax(
     beta: i32,
 ) -> i32 {
     match game.state {
-        CrownfallGameState::Victory(winner) => {
+        CrownfallGameState::Victory(winner, _) => {
             return if winner == player {
                 VICTORY_SCORE
             } else {
@@ -302,7 +302,10 @@ fn collect_moves(
         moves: [(0, 0); MAX_MOVES],
         len: 0,
     };
-    let must_capture_rule_enabled = if let CrownfallRuleset::Custom { mandatory_capture,..} = rules.ruleset {
+    let must_capture_rule_enabled = if let CrownfallRuleset::Custom {
+        mandatory_capture, ..
+    } = rules.ruleset
+    {
         mandatory_capture
     } else {
         false
@@ -394,9 +397,8 @@ fn order_moves(
     let mut tiers = [0u8; MAX_MOVES];
     let mut tier_counts = [0usize; 3];
     for (slot, &(from, to)) in list.moves[..list.len].iter().enumerate() {
-        let enemy_at = |&n: &u8| {
-            matches!(board.cells()[n as usize], Some(piece) if piece.player() != player)
-        };
+        let enemy_at =
+            |&n: &u8| matches!(board.cells()[n as usize], Some(piece) if piece.player() != player);
         let mut tactical = tables::ortho(variant, to as usize).iter().any(enemy_at);
         if !tactical {
             // `from` is occupied by construction - see collect_moves.
@@ -429,11 +431,7 @@ fn order_moves(
         tier_counts[tier as usize] += 1;
     }
 
-    let mut next = [
-        0,
-        tier_counts[0],
-        tier_counts[0] + tier_counts[1],
-    ];
+    let mut next = [0, tier_counts[0], tier_counts[0] + tier_counts[1]];
     let mut ordered = [(0u8, 0u8); MAX_MOVES];
     for (slot, &entry) in list.moves[..list.len].iter().enumerate() {
         let tier = tiers[slot] as usize;
@@ -478,7 +476,8 @@ fn evaluate(
     // test position, not just the real starting layouts.
     let mut own_crown = None;
     let mut enemy_crown = None;
-    let mut pieces = [(0u8, CrownfallPiece::new(CrownfallPieceKind::Crown, player)); tables::GRAND_CELL_COUNT];
+    let mut pieces =
+        [(0u8, CrownfallPiece::new(CrownfallPieceKind::Crown, player)); tables::GRAND_CELL_COUNT];
     let mut piece_count = 0;
     let mut material = 0;
     let mut mobility = 0;

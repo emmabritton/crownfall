@@ -1,4 +1,3 @@
-use std::env::var;
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::net::{poll, send};
 use crate::{BACKGROUND, HEIGHT, SceneName, SceneResult, WIDTH, username};
@@ -135,21 +134,30 @@ impl Scene<SceneResult, SceneName> for GameScene {
                     if self.drag.as_ref().is_some_and(|d| d.origin.to_index() == i) {
                         continue;
                     }
-                    if self.animation.as_ref().is_some_and(|a| a.from.to_index() == i) {
+                    if self
+                        .animation
+                        .as_ref()
+                        .is_some_and(|a| a.from.to_index() == i)
+                    {
                         continue;
                     }
                     if let Some(cell) = cell {
-                        let xy = self
-                            .board_renderer
-                            .pos_for(CrownfallBoardCell::new_index(i), web_game.game.board.variant());
+                        let xy = self.board_renderer.pos_for(
+                            CrownfallBoardCell::new_index(i),
+                            web_game.game.board.variant(),
+                        );
                         let image = self.piece_renderer.image_for_piece(cell);
                         graphics.draw_indexed_image(xy, image);
                     }
                 }
                 if let Some(anim) = &self.animation {
                     let t = (anim.elapsed / MOVE_ANIMATION_DURATION).clamp(0.0, 1.0);
-                    let from = self.board_renderer.pos_for(anim.from, web_game.game.board.variant());
-                    let to = self.board_renderer.pos_for(anim.to, web_game.game.board.variant());
+                    let from = self
+                        .board_renderer
+                        .pos_for(anim.from, web_game.game.board.variant());
+                    let to = self
+                        .board_renderer
+                        .pos_for(anim.to, web_game.game.board.variant());
                     let xy = from + (to - from) * t;
                     let image = self.piece_renderer.image_for_piece(&anim.piece);
                     graphics.draw_indexed_image(xy, image);
@@ -157,7 +165,9 @@ impl Scene<SceneResult, SceneName> for GameScene {
                 draw_status(web_game, *is_white, graphics, &self.last_move);
                 if let Some(drag) = &self.drag {
                     for destination in &drag.valid_destinations {
-                        let pos = self.board_renderer.pos_for(*destination, web_game.game.board.variant());
+                        let pos = self
+                            .board_renderer
+                            .pos_for(*destination, web_game.game.board.variant());
                         graphics.draw_indexed_image(pos, &self.highlight_image);
                     }
                     if let Some(piece) = web_game.game.board.cells()[drag.origin.to_index()] {
@@ -214,7 +224,10 @@ impl Scene<SceneResult, SceneName> for GameScene {
         if !is_players_turn(play_state, *is_white) {
             return;
         }
-        let Some(cell) = self.board_renderer.cell_at(mouse.xy, web_game.game.board.variant()) else {
+        let Some(cell) = self
+            .board_renderer
+            .cell_at(mouse.xy, web_game.game.board.variant())
+        else {
             return;
         };
         if let Some(piece) = web_game.game.board.cells()[cell.to_index()]
@@ -252,7 +265,10 @@ impl Scene<SceneResult, SceneName> for GameScene {
         let GameClientState::Playing(web_game, _) = &mut self.state else {
             return;
         };
-        let Some(target) = self.board_renderer.cell_at(mouse.xy, web_game.game.board.variant()) else {
+        let Some(target) = self
+            .board_renderer
+            .cell_at(mouse.xy, web_game.game.board.variant())
+        else {
             return;
         };
         let CrownfallGameState::Playing(play_state) = &web_game.game.state else {
@@ -402,7 +418,12 @@ fn draw_status(
     // }
 }
 
-fn state_to_text(variant: CrownfallBoardVariant,state: &CrownfallGameState, white_name: &str, black_name: &str) -> String {
+fn state_to_text(
+    variant: CrownfallBoardVariant,
+    state: &CrownfallGameState,
+    white_name: &str,
+    black_name: &str,
+) -> String {
     match state {
         CrownfallGameState::Playing(state) => match state {
             CrownfallPlayState::WaitingForInput { player } => {
@@ -426,13 +447,13 @@ fn state_to_text(variant: CrownfallBoardVariant,state: &CrownfallGameState, whit
                 )
             }
         },
-        CrownfallGameState::Victory(player) => {
+        CrownfallGameState::Victory(player, reason) => {
             let name = if player == &CrownfallPlayerKind::White {
                 white_name
             } else {
                 black_name
             };
-            format!("Victory: {name}")
+            format!("Victory: {name} ({})", reason.description())
         }
         CrownfallGameState::Draw(reason) => format!("Draw ({})", reason.description()),
     }

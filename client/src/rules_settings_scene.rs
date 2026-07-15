@@ -72,7 +72,10 @@ const RULESETS: [(RulesetOption, &str); 5] = [
     (RulesetOption::Standard, "Standard"),
     (RulesetOption::Archers, "Archers"),
     (RulesetOption::MandatoryCapture, "Mandatory Capture"),
-    (RulesetOption::AllCapturesProcessed, "All Captures Processed"),
+    (
+        RulesetOption::AllCapturesProcessed,
+        "All Captures Processed",
+    ),
     (RulesetOption::DiagonalKnights, "Diagonal Knights"),
 ];
 
@@ -190,11 +193,9 @@ impl Scene<SceneResult, SceneName> for RulesSettingsScene {
                 ),
                 RulesPurpose::CreateGame => match send(Packet::CreateGameRequest(rules)) {
                     Ok(_) => SceneUpdateResult::Pop(Some(SceneResult::GameCreationRequested)),
-                    Err(e) => {
-                        SceneUpdateResult::Pop(Some(SceneResult::GameCreationFailed(format!(
-                            "{e:?}"
-                        ))))
-                    }
+                    Err(e) => SceneUpdateResult::Pop(Some(SceneResult::GameCreationFailed(
+                        format!("{e:?}"),
+                    ))),
                 },
             };
         }

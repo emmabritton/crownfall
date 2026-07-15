@@ -51,11 +51,11 @@ pub enum CrownfallBoardVariant {
 }
 
 impl CrownfallBoardVariant {
-    pub fn length(self) -> usize{
+    pub fn length(self) -> usize {
         match self {
             CrownfallBoardVariant::Mini => 5,
             CrownfallBoardVariant::Normal => 7,
-            CrownfallBoardVariant::Grand => 9
+            CrownfallBoardVariant::Grand => 9,
         }
     }
 }
@@ -88,7 +88,7 @@ pub enum CrownfallRuleset {
         /// orthogonal-forward-only movement with a diagonal-forward capture
         /// arc.
         knights_move_diagonally: bool,
-}
+    },
 }
 
 impl CrownfallRules {
@@ -99,7 +99,7 @@ impl CrownfallRules {
                 mandatory_capture: false,
                 all_captures_processed: false,
                 knights_move_diagonally: false,
-            }
+            },
         }
     }
 
@@ -199,8 +199,32 @@ pub enum CrownfallPlayState {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum CrownfallGameState {
     Playing(CrownfallPlayState),
-    Victory(CrownfallPlayerKind),
+    Victory(CrownfallPlayerKind, WinReason),
     Draw(DrawReason),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum WinReason {
+    /// The loser's Crown was surrounded by two enemy Spies, two enemy
+    /// Knights, or an enemy Knight and Crown - whether by the winner's move
+    /// completing the pincer, or the loser's own Crown walking into one
+    /// that already existed.
+    CrownCaptured,
+    /// The loser was left with one or fewer Knights and one or fewer Spies.
+    Attrition,
+    /// The loser surrendered.
+    Surrender,
+}
+
+impl WinReason {
+    pub const fn description(&self) -> &'static str {
+        match self {
+            WinReason::CrownCaptured => "crown captured",
+            WinReason::Attrition => "opponent out of knights and spies",
+            WinReason::Surrender => "opponent surrendered",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

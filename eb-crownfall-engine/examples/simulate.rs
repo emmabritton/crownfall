@@ -5,10 +5,7 @@
 //!   cargo run --package game --example simulate --release
 
 use eb_crownfall_engine::ai;
-use eb_crownfall_engine::{
-    CrownfallBoardCell, CrownfallGame, CrownfallGameState, CrownfallPlayState,
-    CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult, DrawReason,
-};
+use eb_crownfall_engine::*;
 
 /// Small deterministic xorshift64 PRNG so results are reproducible from a seed
 /// without pulling in a `rand` dependency for a one-off analysis tool.
@@ -56,7 +53,7 @@ fn current_player(game: &CrownfallGame) -> Option<CrownfallPlayerKind> {
         CrownfallGameState::Playing(CrownfallPlayState::MustRemoveKnight { player, .. }) => {
             Some(*player)
         }
-        CrownfallGameState::Victory(_) | CrownfallGameState::Draw(_) => None,
+        CrownfallGameState::Victory(..) | CrownfallGameState::Draw(_) => None,
     }
 }
 
@@ -64,10 +61,21 @@ fn current_player(game: &CrownfallGame) -> Option<CrownfallPlayerKind> {
 enum Reason {
     CrownCapture,
     Attrition,
+    Surrender,
     Repetition,
     NoProgress,
     TurnLimit,
     MutualKnightExhaustion,
+}
+
+impl From<WinReason> for Reason {
+    fn from(reason: WinReason) -> Self {
+        match reason {
+            WinReason::CrownCaptured => Reason::CrownCapture,
+            WinReason::Attrition => Reason::Attrition,
+            WinReason::Surrender => Reason::Surrender,
+        }
+    }
 }
 
 impl From<DrawReason> for Reason {
@@ -100,7 +108,7 @@ fn play_game(
     loop {
         let Some(player) = current_player(&game) else {
             let (winner, reason) = match game.state {
-                CrownfallGameState::Victory(w) => (Some(w), Reason::CrownCapture),
+                CrownfallGameState::Victory(w, reason) => (Some(w), reason.into()),
                 CrownfallGameState::Draw(reason) => (None, reason.into()),
                 CrownfallGameState::Playing(_) => {
                     unreachable!("current_player only returns None for Victory/Draw")
@@ -141,20 +149,16 @@ fn play_game(
             }
         };
 
-        let (next, turn_result) = game
+        let (next, _turn_result) = game
             .clone()
             .handle_player_action(action)
             .expect("AI/random move generator only produces legal moves");
         turns += 1;
 
-        if let CrownfallGameState::Victory(winner) = next.state {
-            let reason = match turn_result {
-                Some(CrownfallTurnResult::Victory { .. }) => Reason::CrownCapture,
-                _ => Reason::Attrition,
-            };
+        if let CrownfallGameState::Victory(winner, reason) = next.state {
             return GameResult {
                 winner: Some(winner),
-                reason,
+                reason: reason.into(),
                 turns,
             };
         }
@@ -178,6 +182,7 @@ struct BatchStats {
     draws: usize,
     crown_captures: usize,
     attritions: usize,
+    surrenders: usize,
     repetitions: usize,
     no_progress: usize,
     turn_limits: usize,
@@ -197,6 +202,7 @@ impl BatchStats {
             draws: 0,
             crown_captures: 0,
             attritions: 0,
+            surrenders: 0,
             repetitions: 0,
             no_progress: 0,
             turn_limits: 0,
@@ -220,6 +226,7 @@ impl BatchStats {
         match result.reason {
             Reason::CrownCapture => self.crown_captures += 1,
             Reason::Attrition => self.attritions += 1,
+            Reason::Surrender => self.surrenders += 1,
             Reason::Repetition => self.repetitions += 1,
             Reason::NoProgress => self.no_progress += 1,
             Reason::TurnLimit => self.turn_limits += 1,
@@ -240,11 +247,13 @@ impl BatchStats {
             100.0 * self.draws as f64 / g
         );
         println!(
-            "  Ended by: crown capture {} ({:.1}%), attrition {} ({:.1}%), repetition {} ({:.1}%), no progress {} ({:.1}%), turn limit {} ({:.1}%), mutual knight exhaustion {} ({:.1}%)",
+            "  Ended by: crown capture {} ({:.1}%), attrition {} ({:.1}%), surrender {} ({:.1}%), repetition {} ({:.1}%), no progress {} ({:.1}%), turn limit {} ({:.1}%), mutual knight exhaustion {} ({:.1}%)",
             self.crown_captures,
             100.0 * self.crown_captures as f64 / g,
             self.attritions,
             100.0 * self.attritions as f64 / g,
+            self.surrenders,
+            100.0 * self.surrenders as f64 / g,
             self.repetitions,
             100.0 * self.repetitions as f64 / g,
             self.no_progress,

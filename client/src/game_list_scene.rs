@@ -214,7 +214,10 @@ impl Scene<SceneResult, SceneName> for GameListScene {
                         for packet in packets {
                             if let Packet::JoinGameResponse(id, joined) = packet {
                                 if joined {
-                                    return SceneUpdateResult::Push(false, SceneName::Game(id, len));
+                                    return SceneUpdateResult::Push(
+                                        false,
+                                        SceneName::Game(id, len),
+                                    );
                                 } else {
                                     self.state = GameListState::PreLoad;
                                 }
@@ -223,7 +226,7 @@ impl Scene<SceneResult, SceneName> for GameListScene {
                     }
                     Err(e) => self.state = GameListState::Error(format!("{:?}", e)),
                 }
-            },
+            }
             GameListState::Creating => match poll() {
                 Ok(packets) => {
                     for packet in packets {
@@ -254,7 +257,10 @@ impl Scene<SceneResult, SceneName> for GameListScene {
                                     PendingGameState::Joined => {
                                         return SceneUpdateResult::Push(
                                             false,
-                                            SceneName::Game(game.id.clone(), game.rules.board.length()),
+                                            SceneName::Game(
+                                                game.id.clone(),
+                                                game.rules.board.length(),
+                                            ),
                                         );
                                     }
                                     PendingGameState::Invalid => {

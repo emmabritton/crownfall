@@ -1,3 +1,4 @@
+use crate::CrownfallPieceKind::Archer;
 use crate::errors::CrownfallError;
 use crate::hash;
 use crate::hash::position_hash;
@@ -5,7 +6,19 @@ use crate::tables;
 use crate::*;
 use alloc::vec;
 use alloc::vec::Vec;
-use crate::CrownfallPieceKind::Archer;
+
+/// Formats a cell as its `(x,y)` board coordinate rather than the raw
+/// index `Debug` prints, for move/capture log lines.
+#[cfg(feature = "log")]
+struct LogCoord(CrownfallBoardCell, CrownfallBoardVariant);
+
+#[cfg(feature = "log")]
+impl core::fmt::Display for LogCoord {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let (x, y) = self.0.to_coord(self.1);
+        write!(f, "({x},{y})")
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CaptureKind {
@@ -647,7 +660,11 @@ impl CrownfallBoardState {
         cell: CrownfallBoardCell,
         rules: CrownfallRules,
     ) -> &'static [u8] {
-        let knights_move_diagonally_enabled = if let CrownfallRuleset::Custom { knights_move_diagonally,..} = rules.ruleset {
+        let knights_move_diagonally_enabled = if let CrownfallRuleset::Custom {
+            knights_move_diagonally,
+            ..
+        } = rules.ruleset
+        {
             knights_move_diagonally
         } else {
             false
@@ -691,7 +708,11 @@ impl CrownfallBoardState {
         index: usize,
         rules: CrownfallRules,
     ) -> &'static [u8] {
-        let knights_move_diagonally_enabled = if let CrownfallRuleset::Custom { knights_move_diagonally,..} = rules.ruleset {
+        let knights_move_diagonally_enabled = if let CrownfallRuleset::Custom {
+            knights_move_diagonally,
+            ..
+        } = rules.ruleset
+        {
             knights_move_diagonally
         } else {
             false
@@ -847,7 +868,8 @@ impl CrownfallBoardState {
         let mut attackers = [0u8; 5];
         let mut len = 0;
         for &neighbour in tables::ortho(variant, target.to_index()) {
-            if matches!(self.cells()[neighbour as usize], Some(piece) if piece.player() == attacker) {
+            if matches!(self.cells()[neighbour as usize], Some(piece) if piece.player() == attacker)
+            {
                 attackers[len] = neighbour;
                 len += 1;
             }
@@ -906,9 +928,10 @@ impl CrownfallBoardState {
         rules: CrownfallRules,
     ) -> bool {
         match self.cells()[at.to_index()] {
-            Some(piece) if piece.player() == mover && piece.kind() == CrownfallPieceKind::Crown => self
-                .find_crown_attacking_pair(at, mover.opposite(), at, rules)
-                .is_some(),
+            Some(piece) if piece.player() == mover && piece.kind() == CrownfallPieceKind::Crown => {
+                self.find_crown_attacking_pair(at, mover.opposite(), at, rules)
+                    .is_some()
+            }
             _ => false,
         }
     }
@@ -1163,7 +1186,10 @@ impl CrownfallGame {
     /// regardless of repetition or recent captures.
     pub fn turns_remaining(&self) -> u16 {
         let turns_played = (self.history.len() - 1) as u16;
-        self.rules.board.total_turn_limit().saturating_sub(turns_played)
+        self.rules
+            .board
+            .total_turn_limit()
+            .saturating_sub(turns_played)
     }
 
     /// Turns remaining before the no-progress draw fires if no capture
@@ -1226,12 +1252,12 @@ impl CrownfallGame {
                     return Err(CrownfallError::NotYourTurn(action.player()));
                 }
             }
-            CrownfallGameState::Victory(_) => {
+            CrownfallGameState::Victory(_, _) => {
                 return Err(CrownfallError::GameOver(action.player()));
             }
             CrownfallGameState::Draw(_) => return Err(CrownfallError::GameOver(action.player())),
         }
-        match action {
+        let result = match action {
             CrownfallPlayerAction::Move { player, from, to } => {
                 self.apply_move(player, from, to, log_moves, validate_mandatory_capture)
             }
@@ -1239,10 +1265,23 @@ impl CrownfallGame {
                 self.apply_knight_removal(player, at)
             }
             CrownfallPlayerAction::Surrender { player } => {
-                self.state = CrownfallGameState::Victory(player.opposite());
+                self.state = CrownfallGameState::Victory(player.opposite(), WinReason::Surrender);
                 Ok(None)
             }
+        };
+        #[cfg(feature = "log")]
+        if log_moves {
+            match self.state {
+                CrownfallGameState::Victory(player, reason) => {
+                    log::info!("game over: {player:?} wins ({})", reason.description());
+                }
+                CrownfallGameState::Draw(reason) => {
+                    log::info!("game over: draw ({})", reason.description());
+                }
+                CrownfallGameState::Playing(_) => {}
+            }
         }
+        result
     }
 
     #[cfg_attr(not(feature = "log"), allow(unused_variables))]
@@ -1280,7 +1319,10 @@ impl CrownfallGame {
             return Err(CrownfallError::InvalidDestination(player, from, to));
         }
 
-        let must_capture_rule_enabled = if let CrownfallRuleset::Custom { mandatory_capture,..} = self.rules.ruleset {
+        let must_capture_rule_enabled = if let CrownfallRuleset::Custom {
+            mandatory_capture, ..
+        } = self.rules.ruleset
+        {
             mandatory_capture
         } else {
             false
@@ -1298,14 +1340,18 @@ impl CrownfallGame {
 
         #[cfg(feature = "log")]
         if log_moves {
-            log::info!("{player:?} moves {:?} from {from:?} to {to:?}", piece.kind());
+            log::info!(
+                "{player:?} moves {:?} from {} to {}",
+                piece.kind(),
+                LogCoord(from, self.rules.board),
+                LogCoord(to, self.rules.board)
+            );
         }
 
         // The move's own contribution to the incremental position hash -
         // capture resolution below folds any removals into this as they
         // happen (see `resolve_continuation`/`remove_piece`).
-        let mut hash_delta =
-            hash::piece_key(from_index, piece) ^ hash::piece_key(to_index, piece);
+        let mut hash_delta = hash::piece_key(from_index, piece) ^ hash::piece_key(to_index, piece);
         self.board.cells_mut()[from_index] = None;
         self.board.cells_mut()[to_index] = Some(piece);
 
@@ -1318,22 +1364,36 @@ impl CrownfallGame {
             self.board.cells_mut()[to_index] = None;
             #[cfg(feature = "log")]
             if log_moves {
-                log::info!("captured: {player:?} Crown at {to:?}");
+                log::info!(
+                    "captured: {player:?} Crown at {}",
+                    LogCoord(to, self.rules.board)
+                );
             }
-            self.state = CrownfallGameState::Victory(player.opposite());
+            self.state = CrownfallGameState::Victory(player.opposite(), WinReason::CrownCaptured);
             return Ok(Some(CrownfallTurnResult::Victory {
                 player: player.opposite(),
                 surrounded_crown: to,
             }));
         }
 
-        let all_captures_processed_enabled = if let CrownfallRuleset::Custom { all_captures_processed,..} = self.rules.ruleset {
+        let all_captures_processed_enabled = if let CrownfallRuleset::Custom {
+            all_captures_processed,
+            ..
+        } = self.rules.ruleset
+        {
             all_captures_processed
         } else {
             false
         };
         if all_captures_processed_enabled {
-            self.apply_move_all_captures_processed(player, from, to, piece, log_moves, &mut hash_delta)
+            self.apply_move_all_captures_processed(
+                player,
+                from,
+                to,
+                piece,
+                log_moves,
+                &mut hash_delta,
+            )
         } else {
             self.apply_move_sequential(player, from, to, piece, log_moves, &mut hash_delta)
         }
@@ -1357,11 +1417,12 @@ impl CrownfallGame {
             #[cfg(feature = "log")]
             if log_moves {
                 log::info!(
-                    "captured: {:?} Crown at {surrounded_crown:?}",
-                    player.opposite()
+                    "captured: {:?} Crown at {}",
+                    player.opposite(),
+                    LogCoord(surrounded_crown, self.rules.board)
                 );
             }
-            self.state = CrownfallGameState::Victory(player);
+            self.state = CrownfallGameState::Victory(player, WinReason::CrownCaptured);
             return Ok(Some(CrownfallTurnResult::Victory {
                 player,
                 surrounded_crown,
@@ -1374,7 +1435,11 @@ impl CrownfallGame {
             remove_piece(&mut self.board, to_index, hash_delta);
             #[cfg(feature = "log")]
             if log_moves {
-                log::info!("captured: {player:?} {:?} at {to:?}", piece.kind());
+                log::info!(
+                    "captured: {player:?} {:?} at {}",
+                    piece.kind(),
+                    LogCoord(to, self.rules.board)
+                );
             }
             let attackers = self
                 .board
@@ -1484,8 +1549,9 @@ impl CrownfallGame {
             #[cfg(feature = "log")]
             if log_moves {
                 log::info!(
-                    "captured: {:?} Crown at {surrounded_crown:?}",
-                    player.opposite()
+                    "captured: {:?} Crown at {}",
+                    player.opposite(),
+                    LogCoord(surrounded_crown, self.rules.board)
                 );
             }
             any_capture = true;
@@ -1499,7 +1565,11 @@ impl CrownfallGame {
             remove_piece(&mut self.board, to_index, hash_delta);
             #[cfg(feature = "log")]
             if log_moves {
-                log::info!("captured: {player:?} {:?} at {to:?}", piece.kind());
+                log::info!(
+                    "captured: {player:?} {:?} at {}",
+                    piece.kind(),
+                    LogCoord(to, self.rules.board)
+                );
             }
             let attackers = snapshot
                 .find_attacking_pair(to, player.opposite(), self.rules)
@@ -1544,7 +1614,7 @@ impl CrownfallGame {
         if crown_capture.is_some() {
             // The Crown was captured outright this move - that always ends
             // the game, regardless of what else also happened.
-            self.state = CrownfallGameState::Victory(player);
+            self.state = CrownfallGameState::Victory(player, WinReason::CrownCaptured);
             return Ok(turn_result);
         }
 
@@ -1590,10 +1660,10 @@ impl CrownfallGame {
             #[cfg(feature = "log")]
             if log_moves {
                 log::info!(
-                    "captured: {:?} {:?} at {:?}",
+                    "captured: {:?} {:?} at {}",
                     player.opposite(),
                     target_kind.expect("target held a piece before removal"),
-                    capture.target
+                    LogCoord(capture.target, self.rules.board)
                 );
             }
             let second_attacker = CrownfallBoardState::other_attacker(capture.attackers, to);
@@ -1611,7 +1681,10 @@ impl CrownfallGame {
                 remove_piece(&mut self.board, lost_knight.to_index(), hash_delta);
                 #[cfg(feature = "log")]
                 if log_moves {
-                    log::info!("captured: {player:?} Knight at {lost_knight:?}");
+                    log::info!(
+                        "sacrificed: {player:?} Knight at {}",
+                        LogCoord(lost_knight, self.rules.board)
+                    );
                 }
             }
             let captured_this = CrownfallTurnResult::Capture {
@@ -1645,9 +1718,10 @@ impl CrownfallGame {
             #[cfg(feature = "log")]
             if log_moves {
                 log::info!(
-                    "captured: {:?} {:?} at {target:?} (archer shot)",
+                    "captured: {:?} {:?} at {} (archer shot)",
                     player.opposite(),
-                    target_kind.expect("target held a piece before removal")
+                    target_kind.expect("target held a piece before removal"),
+                    LogCoord(target, self.rules.board)
                 );
             }
             let captured_this = CrownfallTurnResult::Capture {
@@ -1667,6 +1741,11 @@ impl CrownfallGame {
     /// priority over an ordinary continuation, exactly as under the
     /// sequential rules - this variant only changes *which* pieces get
     /// removed, not the priority of the resulting `GameState`.
+    ///
+    /// Attrition is skipped entirely under the `Archers` ruleset: it only
+    /// counts Knights and Spies, but an Archer-owning side can still capture
+    /// (its ranged shot) with none of either left, so being reduced to
+    /// Archers alone must not be treated as a loss.
     fn resolve_after_removal(
         &mut self,
         player: CrownfallPlayerKind,
@@ -1677,8 +1756,10 @@ impl CrownfallGame {
         let (knights, spies) = self.board.knight_spy_counts();
         if CrownfallBoardState::is_mutual_knight_exhaustion(&knights) {
             CrownfallGameState::Draw(DrawReason::MutualKnightExhaustion)
-        } else if CrownfallBoardState::is_attrition_defeated(&knights, &spies, player.opposite()) {
-            CrownfallGameState::Victory(player)
+        } else if !self.rules.has_archers()
+            && CrownfallBoardState::is_attrition_defeated(&knights, &spies, player.opposite())
+        {
+            CrownfallGameState::Victory(player, WinReason::Attrition)
         } else {
             resolve_continuation(
                 &self.board,
@@ -1806,6 +1887,72 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A single moved Knight can land in the diagonal-exposed capture-arc
+    /// cell of two different enemy pieces at once, each independently
+    /// paired with a different already-in-place partner Knight - the move
+    /// should complete both pincers (and pay the Knight-Capture sacrifice
+    /// once, for whichever of the two targets is itself a Knight), not just
+    /// the first one found.
+    #[test]
+    fn single_move_completes_two_independent_knight_pincers() {
+        use CrownfallPlayerKind::*;
+        let rules = CrownfallRules::standard();
+        fn c(x: usize, y: usize) -> CrownfallBoardCell {
+            CrownfallBoardCell::new_coord(x, y, CrownfallBoardVariant::Normal)
+        }
+        fn mv(
+            mut game: CrownfallGame,
+            player: CrownfallPlayerKind,
+            from: (usize, usize),
+            to: (usize, usize),
+        ) -> CrownfallGame {
+            game.apply_action(CrownfallPlayerAction::Move {
+                player,
+                from: c(from.0, from.1),
+                to: c(to.0, to.1),
+            })
+            .expect("legal move");
+            game
+        }
+        let mut game = CrownfallGame::new(rules);
+        game = mv(game, White, (1, 5), (1, 4));
+        game = mv(game, Black, (3, 1), (3, 2));
+        game = mv(game, White, (2, 5), (2, 4));
+        game = mv(game, Black, (1, 1), (1, 2));
+        game = mv(game, White, (0, 5), (0, 4));
+        game = mv(game, Black, (5, 1), (5, 2));
+        game = mv(game, White, (4, 5), (4, 4));
+        game = mv(game, Black, (1, 2), (1, 3));
+        game = mv(game, White, (4, 4), (3, 4));
+        game = mv(game, Black, (3, 2), (3, 3));
+        game = mv(game, White, (2, 4), (2, 3));
+        game = mv(game, Black, (2, 1), (2, 2));
+
+        game = mv(game, White, (1, 4), (2, 4));
+
+        let cells = game.board.cells();
+        assert!(
+            cells[c(1, 3).to_index()].is_none(),
+            "Black Knight at (1,3) should be captured"
+        );
+        assert!(
+            cells[c(3, 3).to_index()].is_none(),
+            "Black Spy at (3,3) should be captured"
+        );
+        assert!(
+            cells[c(2, 4).to_index()].is_none(),
+            "the moved Knight should be sacrificed for capturing the Knight at (1,3)"
+        );
+        assert!(
+            cells[c(3, 4).to_index()].is_some(),
+            "the partner Knight at (3,4) that completed the Spy pincer should survive"
+        );
+        assert!(
+            cells[c(0, 4).to_index()].is_some(),
+            "the partner Knight at (0,4) that completed the Knight pincer should survive"
+        );
     }
 
     #[test]

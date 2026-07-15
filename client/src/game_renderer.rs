@@ -53,13 +53,13 @@ impl PieceRenderer {
             arrow_white: IndexedImage::from_file_contents(include_bytes!(
                 "../resources/arrow_white.ici"
             ))
-                .unwrap()
-                .0,
+            .unwrap()
+            .0,
             arrow_black: IndexedImage::from_file_contents(include_bytes!(
                 "../resources/arrow_black.ici"
             ))
-                .unwrap()
-                .0,
+            .unwrap()
+            .0,
         }
     }
 
@@ -141,9 +141,7 @@ impl BoardRenderer {
 
     pub fn cell_at(&self, xy: Coord, variant: CrownfallBoardVariant) -> Option<CrownfallBoardCell> {
         let grid = (xy - self.pos) / CELL_SIZE;
-        if (0..self.size as isize).contains(&grid.x)
-            && (0..self.size as isize).contains(&grid.y)
-        {
+        if (0..self.size as isize).contains(&grid.x) && (0..self.size as isize).contains(&grid.y) {
             let (x, y) = self.flip(grid.x as usize, grid.y as usize);
             Some(CrownfallBoardCell::new_coord(x, y, variant))
         } else {

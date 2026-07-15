@@ -12,10 +12,19 @@ fn pad_board_to_avoid_attrition(board: &mut CrownfallBoardState, player: Crownfa
 #[test]
 fn spy_capture_removes_target_from_board() {
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[23] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[23] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::White,
+    ));
     pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
-    board.cells_mut()[32] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::White));
+    board.cells_mut()[32] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -46,10 +55,19 @@ fn knight_pincer_of_two_diagonal_attackers_captures() {
     // Both attackers diagonally ahead of the target, with the straight-ahead cell
     // empty — target (3,3)=24, attackers at (2,4)=30 and (4,4)=32.
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[30] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[30] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
     pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
-    board.cells_mut()[39] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[39] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -81,10 +99,19 @@ fn knight_beside_target_cannot_complete_a_pincer() {
     // (same row — not in either attacker's forward arc, invalid). Even though one
     // attacker is legitimately positioned, the side attacker disqualifies the pincer.
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[23] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[23] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
     pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
-    board.cells_mut()[38] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[38] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -120,10 +147,19 @@ fn knight_moving_directly_ahead_cannot_complete_a_pincer_even_with_diagonal_part
     // the *directly-ahead* Knight that just moved, not the diagonal one — so it must
     // NOT spring the pincer.
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[32] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[32] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
     pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
-    board.cells_mut()[38] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[38] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -157,10 +193,19 @@ fn knight_capture_removes_target_and_one_attacker() {
     // (4,4)=32. One White Knight already sits at 31 (directly ahead); the other
     // moves in from (4,5)=39 to 32 (diagonally ahead) to complete the pincer.
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[31] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[31] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
     pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
-    board.cells_mut()[39] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[39] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -201,13 +246,34 @@ fn high_spy_count_prevents_attrition_despite_low_knight_count() {
     // (README "Losing the Game") — a strong spy count keeps a player in the
     // fight even after their knights are nearly gone.
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[5] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[6] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::Black));
-    board.cells_mut()[12] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::Black));
-    board.cells_mut()[13] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::Black));
-    board.cells_mut()[31] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
-    board.cells_mut()[39] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[5] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[6] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[12] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[13] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[31] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[39] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -240,10 +306,22 @@ fn attrition_triggers_once_both_knights_and_spies_are_depleted() {
     // sole spy is untouched. With Black left at zero knights and one spy,
     // both thresholds are met and White wins by attrition.
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[6] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::Black));
-    board.cells_mut()[23] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::White));
-    board.cells_mut()[32] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[6] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[23] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[32] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -265,7 +343,7 @@ fn attrition_triggers_once_both_knights_and_spies_are_depleted() {
 
     assert_eq!(
         game.state,
-        CrownfallGameState::Victory(CrownfallPlayerKind::White),
+        CrownfallGameState::Victory(CrownfallPlayerKind::White, WinReason::Attrition),
         "black should lose to attrition once both knight and spy counts are at or below one"
     );
 }
@@ -279,9 +357,18 @@ fn mutual_knight_exhaustion_from_the_same_capture_is_a_draw() {
     // hit from the very same move, which should be ruled a draw rather than
     // an outright win for whichever side still has a knight.
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[31] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
-    board.cells_mut()[39] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[31] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[39] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -314,10 +401,19 @@ fn knight_pincer_capturing_a_spy_loses_no_knight() {
     // the spy without the README's knight-removal penalty, which only applies
     // when the captured piece was itself a Knight.
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::Black));
-    board.cells_mut()[31] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[31] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
     pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
-    board.cells_mut()[39] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[39] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -354,10 +450,19 @@ fn crown_partnered_knight_capture_never_loses_the_crown() {
     // (4,4)=32, diagonally ahead of the target at (3,3)=24 — the just-moved Knight
     // must land diagonally (not directly) ahead to spring the pincer.
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[23] = Some(CrownfallPiece::new(CrownfallPieceKind::Crown, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[23] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Crown,
+        CrownfallPlayerKind::White,
+    ));
     pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
-    board.cells_mut()[39] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[39] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -383,7 +488,10 @@ fn crown_partnered_knight_capture_never_loses_the_crown() {
     );
     assert_eq!(
         game.board.cells()[23],
-        Some(CrownfallPiece::new(CrownfallPieceKind::Crown, CrownfallPlayerKind::White)),
+        Some(CrownfallPiece::new(
+            CrownfallPieceKind::Crown,
+            CrownfallPlayerKind::White
+        )),
         "the Crown should never be the piece lost"
     );
 }
@@ -396,10 +504,19 @@ fn knight_moving_directly_ahead_cannot_complete_a_pincer_even_with_crown_partner
     // restriction doesn't help here — it's the just-moved Knight landing directly
     // ahead, not diagonally, so it must not spring the pincer.
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[23] = Some(CrownfallPiece::new(CrownfallPieceKind::Crown, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[23] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Crown,
+        CrownfallPlayerKind::White,
+    ));
     pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
-    board.cells_mut()[38] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[38] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -429,11 +546,26 @@ fn knight_moving_directly_ahead_cannot_complete_a_pincer_even_with_crown_partner
 #[test]
 fn single_move_capturing_two_pieces_removes_both() {
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[38] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[23] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::White));
-    board.cells_mut()[39] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::White));
-    board.cells_mut()[30] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[38] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[23] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[39] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[30] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -469,10 +601,22 @@ fn extra_adjacent_attacker_does_not_block_a_valid_pincer() {
     // alongside two knights that form a valid pincer. The extra piece must not
     // prevent the knight capture from resolving.
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[31] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
-    board.cells_mut()[23] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::White));
-    board.cells_mut()[39] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[31] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[23] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[39] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
     pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
 
     let game = CrownfallGame {
@@ -506,9 +650,18 @@ fn extra_adjacent_attacker_does_not_block_a_valid_pincer() {
 #[test]
 fn crown_cannot_stand_in_for_a_spy() {
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::Black));
-    board.cells_mut()[23] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::White));
-    board.cells_mut()[32] = Some(CrownfallPiece::new(CrownfallPieceKind::Crown, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[23] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[32] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Crown,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -540,9 +693,18 @@ fn moving_into_a_spy_pincer_captures_the_moved_piece() {
     // now that Knights are forward-only) into a pre-existing Black Spy
     // pincer at 14/16.
     let mut board = empty_board();
-    board.cells_mut()[14] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::Black));
-    board.cells_mut()[16] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::Black));
-    board.cells_mut()[22] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[14] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[16] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[22] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
     pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::White);
 
     let game = CrownfallGame {
@@ -575,7 +737,10 @@ fn moving_into_a_spy_pincer_captures_the_moved_piece() {
 #[test]
 fn knights_can_move_orthogonally_but_not_backward_or_diagonally() {
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -639,10 +804,22 @@ fn crown_walking_into_a_pincer_loses_immediately_even_mid_capture() {
     // black spies — the crown's own capture loses instantly, taking priority over the
     // capture it was attempting.
     let mut board = empty_board();
-    board.cells_mut()[1] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::Black));
-    board.cells_mut()[7] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, CrownfallPlayerKind::Black));
-    board.cells_mut()[2] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
-    board.cells_mut()[15] = Some(CrownfallPiece::new(CrownfallPieceKind::Crown, CrownfallPlayerKind::White));
+    board.cells_mut()[1] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[7] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[2] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[15] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Crown,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -664,7 +841,7 @@ fn crown_walking_into_a_pincer_loses_immediately_even_mid_capture() {
 
     assert_eq!(
         game.state,
-        CrownfallGameState::Victory(CrownfallPlayerKind::Black),
+        CrownfallGameState::Victory(CrownfallPlayerKind::Black, WinReason::CrownCaptured),
         "black wins: the crown's own capture takes priority over the move it was attempting"
     );
     assert!(
@@ -688,9 +865,18 @@ fn crown_capture_needs_no_knight_arc_any_two_adjacent_sides_count() {
     // a valid attacker for an ordinary Knight Capture (see
     // `knight_beside_target_cannot_complete_a_pincer`).
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Crown, CrownfallPlayerKind::Black));
-    board.cells_mut()[31] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
-    board.cells_mut()[32] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Crown,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[31] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[32] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -712,7 +898,7 @@ fn crown_capture_needs_no_knight_arc_any_two_adjacent_sides_count() {
 
     assert_eq!(
         game.state,
-        CrownfallGameState::Victory(CrownfallPlayerKind::White),
+        CrownfallGameState::Victory(CrownfallPlayerKind::White, WinReason::CrownCaptured),
         "two knights on any two of the crown's sides, direct or beside, should capture it"
     );
     assert!(
@@ -732,9 +918,18 @@ fn crown_capture_via_a_knights_diagonal_reach_when_that_knight_just_moved() {
     // from (4,5)=39 to (4,4)=32 — diagonally ahead of the Crown, not one of its
     // orthogonal neighbours — completing the pincer.
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Crown, CrownfallPlayerKind::Black));
-    board.cells_mut()[23] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
-    board.cells_mut()[39] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Crown,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[23] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[39] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,
@@ -756,7 +951,7 @@ fn crown_capture_via_a_knights_diagonal_reach_when_that_knight_just_moved() {
 
     assert_eq!(
         game.state,
-        CrownfallGameState::Victory(CrownfallPlayerKind::White),
+        CrownfallGameState::Victory(CrownfallPlayerKind::White, WinReason::CrownCaptured),
         "a Knight moving into a diagonal-forward cell of the Crown should complete the pincer"
     );
     assert!(
@@ -776,9 +971,18 @@ fn crown_capture_diagonal_reach_does_not_count_for_a_stationary_knight() {
     // the actively-moving Knight, so this must NOT capture: only one orthogonal
     // attacker (the mover) is present, and one attacker alone can't complete a pincer.
     let mut board = empty_board();
-    board.cells_mut()[24] = Some(CrownfallPiece::new(CrownfallPieceKind::Crown, CrownfallPlayerKind::Black));
-    board.cells_mut()[32] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
-    board.cells_mut()[30] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, CrownfallPlayerKind::White));
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Crown,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[32] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[30] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = CrownfallGame {
         board,

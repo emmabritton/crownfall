@@ -72,10 +72,14 @@ impl AppState {
     }
 
     pub fn pending_list(&self) -> Vec<PendingGame> {
-        self.pending.iter().map(|(_,s)| s.game.clone()).collect()
+        self.pending.values().map(|s| s.game.clone()).collect()
     }
 
-    pub fn create_game(&mut self, client_id: ClientId, rules: CrownfallRules) -> Option<PendingGame> {
+    pub fn create_game(
+        &mut self,
+        client_id: ClientId,
+        rules: CrownfallRules,
+    ) -> Option<PendingGame> {
         if self.game_count() >= self.max_games {
             return None;
         }
@@ -83,11 +87,7 @@ impl AppState {
         let game_id = Uuid::new_v4().to_string();
         let game = PendingGame {
             id: game_id.clone(),
-            white_player_name: self
-                .names
-                .get(&client_id)
-                .cloned()
-                .unwrap_or_default(),
+            white_player_name: self.names.get(&client_id).cloned().unwrap_or_default(),
             created: Utc::now(),
             rules,
         };
@@ -95,10 +95,7 @@ impl AppState {
             white_player: client_id,
             game: game.clone(),
         };
-        self.pending.insert(
-            game_id,
-            server_game,
-        );
+        self.pending.insert(game_id, server_game);
         Some(game)
     }
 
@@ -210,5 +207,5 @@ pub struct ServerActiveGame {
 #[derive(Clone, Debug)]
 pub struct ServerPendingGame {
     pub white_player: ClientId,
-    pub game: PendingGame
+    pub game: PendingGame,
 }

@@ -53,7 +53,7 @@ use networking::packet::{GameId, Packet};
 use serde::{Deserialize, Serialize};
 
 fn main() -> Result<()> {
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     if std::env::args().any(|x| x == "--reset") {
         let mut prefs = settings();
@@ -81,7 +81,7 @@ fn main() -> Result<()> {
                 scene_stack.clear();
                 scene_stack.push(GameListScene::new(style));
             }
-            SceneName::Game(id,board_length) => scene_stack.push(GameScene::new(id,board_length)),
+            SceneName::Game(id, board_length) => scene_stack.push(GameScene::new(id, board_length)),
             SceneName::RejoinGame(game_id, board_length) => {
                 scene_stack.push(GameListScene::new(style));
                 scene_stack.push(GameScene::new(game_id, board_length));

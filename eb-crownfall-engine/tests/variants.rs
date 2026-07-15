@@ -266,6 +266,36 @@ fn archer_ranged_capture_with_orthogonally_adjacent_ally() {
     );
 }
 
+/// Attrition (one-or-fewer Knights and Spies) is ignored under the Archers
+/// ruleset: an Archer-owning side can still capture with none of either
+/// left, so losing your last Knight while Archers remain must not end the
+/// game.
+#[test]
+fn attrition_is_ignored_when_archers_remain() {
+    let mut board = CrownfallBoardState::empty(CrownfallBoardVariant::Grand);
+    place(&mut board, 3, 3, Knight, Black); // black's only knight, about to be captured
+    place(&mut board, 7, 7, Archer, Black);
+    place(&mut board, 8, 8, Archer, Black); // black's only remaining pieces after the capture
+    place(&mut board, 3, 4, Spy, White);
+    place(&mut board, 2, 2, Spy, White); // will move to (2,3)
+    let mut game = game_with(board, White, CrownfallRules::grand());
+
+    let result = mv(&mut game, White, (2, 2), (2, 3)).unwrap();
+    assert!(matches!(
+        result,
+        Some(CrownfallTurnResult::Capture { player: White, .. })
+    ));
+    assert_eq!(
+        piece_at(&game.board, 3, 3),
+        None,
+        "black's last knight captured"
+    );
+    assert!(
+        matches!(game.state, CrownfallGameState::Playing(_)),
+        "black has 0 knights and 0 spies, but 2 archers still in play - not an attrition loss"
+    );
+}
+
 /// "S / k A doesn't work as the spy isn't ortho adjacent": a diagonally
 /// adjacent ally doesn't satisfy the touching-ally condition.
 #[test]

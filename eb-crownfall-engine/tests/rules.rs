@@ -66,7 +66,6 @@ use CrownfallPlayerKind::{Black, White};
 // Board / cell basics
 // ---------------------------------------------------------------------
 
-
 #[test]
 fn default_board_has_correct_piece_counts_and_positions() {
     let board = CrownfallBoardState::default();
@@ -330,7 +329,7 @@ fn acting_after_victory_is_rejected() {
     let mut board = empty_board();
     place(&mut board, 3, 3, Spy, White);
     let mut game = game_with(board, White);
-    game.state = CrownfallGameState::Victory(White);
+    game.state = CrownfallGameState::Victory(White, WinReason::CrownCaptured);
     let err = mv(&mut game, White, (3, 3), (3, 2)).unwrap_err();
     assert!(matches!(err, CrownfallError::GameOver(White)));
 }
@@ -353,7 +352,10 @@ fn surrender_gives_opponent_the_victory() {
         .apply_action(CrownfallPlayerAction::Surrender { player: White })
         .unwrap();
     assert_eq!(result, None);
-    assert_eq!(game.state, CrownfallGameState::Victory(Black));
+    assert_eq!(
+        game.state,
+        CrownfallGameState::Victory(Black, WinReason::Surrender)
+    );
 }
 
 #[test]
@@ -541,7 +543,10 @@ fn crown_capture_via_two_spies() {
         Some(CrownfallTurnResult::Victory { player: Black, .. })
     ));
     assert_eq!(piece_at(&game.board, 3, 3), None);
-    assert_eq!(game.state, CrownfallGameState::Victory(Black));
+    assert_eq!(
+        game.state,
+        CrownfallGameState::Victory(Black, WinReason::CrownCaptured)
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -564,7 +569,10 @@ fn crown_capture_via_two_orthogonal_attackers() {
         Some(CrownfallTurnResult::Victory { player: White, surrounded_crown }) if surrounded_crown.to_coord(VARIANT) == (3, 3)
     ));
     assert_eq!(piece_at(&game.board, 3, 3), None);
-    assert_eq!(game.state, CrownfallGameState::Victory(White));
+    assert_eq!(
+        game.state,
+        CrownfallGameState::Victory(White, WinReason::CrownCaptured)
+    );
 }
 
 /// A Knight that just moved diagonally ahead of the Crown counts as a
@@ -645,7 +653,10 @@ fn own_crown_walking_into_a_pincer_loses_immediately() {
         result,
         Some(CrownfallTurnResult::Victory { player: Black, surrounded_crown }) if surrounded_crown.to_coord(VARIANT) == (3, 3)
     ));
-    assert_eq!(game.state, CrownfallGameState::Victory(Black));
+    assert_eq!(
+        game.state,
+        CrownfallGameState::Victory(Black, WinReason::CrownCaptured)
+    );
     assert_eq!(piece_at(&game.board, 3, 3), None);
 }
 
@@ -664,7 +675,10 @@ fn own_crown_trap_takes_priority_over_the_movers_own_capture() {
     let mut game = game_with(board, White);
 
     mv(&mut game, White, (3, 4), (3, 3)).unwrap();
-    assert_eq!(game.state, CrownfallGameState::Victory(Black));
+    assert_eq!(
+        game.state,
+        CrownfallGameState::Victory(Black, WinReason::CrownCaptured)
+    );
     assert_eq!(piece_at(&game.board, 3, 3), None, "white crown removed");
     assert_eq!(
         piece_at(&game.board, 4, 3),
@@ -746,7 +760,10 @@ fn attrition_defeat_when_knights_and_spies_both_exhausted() {
         None,
         "black's last knight captured"
     );
-    assert_eq!(game.state, CrownfallGameState::Victory(White));
+    assert_eq!(
+        game.state,
+        CrownfallGameState::Victory(White, WinReason::Attrition)
+    );
 }
 
 #[test]
@@ -878,6 +895,16 @@ fn draw_reason_descriptions_are_stable() {
         DrawReason::MutualKnightExhaustion.description(),
         "both sides out of knights"
     );
+}
+
+#[test]
+fn win_reason_descriptions_are_stable() {
+    assert_eq!(WinReason::CrownCaptured.description(), "crown captured");
+    assert_eq!(
+        WinReason::Attrition.description(),
+        "opponent out of knights and spies"
+    );
+    assert_eq!(WinReason::Surrender.description(), "opponent surrendered");
 }
 
 // ---------------------------------------------------------------------

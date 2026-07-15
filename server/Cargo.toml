@@ -11,3 +11,4 @@ eb-crownfall-engine = {path = "../eb-crownfall-engine", features = ["log" , "ser
 networking = {path = "../networking"}
 uuid.workspace = true
 chrono.workspace = true
+env_logger = "0.11"
