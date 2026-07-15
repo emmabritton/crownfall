@@ -6,7 +6,7 @@
 
 use eb_crownfall_engine::ai;
 use eb_crownfall_engine::{
-    Cell, DrawReason, Game, GameState, PlayState, PlayerAction, PlayerKind, TurnResult,
+    CrownfallBoardCell, CrownfallGame, CrownfallGameState, CrownfallPlayState, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult, DrawReason,
 };
 
 /// Small deterministic xorshift64 PRNG so results are reproducible from a seed
@@ -32,26 +32,26 @@ impl Rng {
     }
 }
 
-fn legal_moves(game: &Game, player: PlayerKind) -> Vec<PlayerAction> {
+fn legal_moves(game: &CrownfallGame, player: CrownfallPlayerKind) -> Vec<CrownfallPlayerAction> {
     let mut moves = Vec::new();
     for index in 0..game.board.cells.len() {
         if let Some(piece) = game.board.cells[index]
             && piece.player == player
         {
-            let from = Cell::new_index(index);
+            let from = CrownfallBoardCell::new_index(index);
             for to in game.board.get_valid_destinations_for(from) {
-                moves.push(PlayerAction::Move { player, from, to });
+                moves.push(CrownfallPlayerAction::Move { player, from, to });
             }
         }
     }
     moves
 }
 
-fn current_player(game: &Game) -> Option<PlayerKind> {
+fn current_player(game: &CrownfallGame) -> Option<CrownfallPlayerKind> {
     match &game.state {
-        GameState::Playing(PlayState::WaitingForInput { player }) => Some(*player),
-        GameState::Playing(PlayState::MustRemoveKnight { player, .. }) => Some(*player),
-        GameState::Victory(_) | GameState::Draw(_) => None,
+        CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput { player }) => Some(*player),
+        CrownfallGameState::Playing(CrownfallPlayState::MustRemoveKnight { player, .. }) => Some(*player),
+        CrownfallGameState::Victory(_) | CrownfallGameState::Draw(_) => None,
     }
 }
 
@@ -77,7 +77,7 @@ impl From<DrawReason> for Reason {
 }
 
 struct GameResult {
-    winner: Option<PlayerKind>,
+    winner: Option<CrownfallPlayerKind>,
     reason: Reason,
     turns: usize,
 }
@@ -88,16 +88,16 @@ fn play_game(
     black_depth: u8,
     random_opening_plies: usize,
 ) -> GameResult {
-    let mut game = Game::default();
+    let mut game = CrownfallGame::default();
     let mut rng = Rng::new(seed);
     let mut turns = 0usize;
 
     loop {
         let Some(player) = current_player(&game) else {
             let (winner, reason) = match game.state {
-                GameState::Victory(w) => (Some(w), Reason::CrownCapture),
-                GameState::Draw(reason) => (None, reason.into()),
-                GameState::Playing(_) => {
+                CrownfallGameState::Victory(w) => (Some(w), Reason::CrownCapture),
+                CrownfallGameState::Draw(reason) => (None, reason.into()),
+                CrownfallGameState::Playing(_) => {
                     unreachable!("current_player only returns None for Victory/Draw")
                 }
             };
@@ -119,12 +119,12 @@ fn play_game(
             }
             moves[rng.gen_range(moves.len())]
         } else {
-            let depth = if player == PlayerKind::White {
+            let depth = if player == CrownfallPlayerKind::White {
                 white_depth
             } else {
                 black_depth
             };
-            match ai::best_move(&game, player, depth, ai::Personality::Balanced) {
+            match ai::best_move(&game, player, depth, ai::CrownfallPersonality::Balanced) {
                 Some(action) => action,
                 None => {
                     return GameResult {
@@ -142,9 +142,9 @@ fn play_game(
             .expect("AI/random move generator only produces legal moves");
         turns += 1;
 
-        if let GameState::Victory(winner) = next.state {
+        if let CrownfallGameState::Victory(winner) = next.state {
             let reason = match turn_result {
-                Some(TurnResult::Victory { .. }) => Reason::CrownCapture,
+                Some(CrownfallTurnResult::Victory { .. }) => Reason::CrownCapture,
                 _ => Reason::Attrition,
             };
             return GameResult {
@@ -153,7 +153,7 @@ fn play_game(
                 turns,
             };
         }
-        if let GameState::Draw(reason) = next.state {
+        if let CrownfallGameState::Draw(reason) = next.state {
             return GameResult {
                 winner: None,
                 reason: reason.into(),
@@ -208,8 +208,8 @@ impl BatchStats {
         self.min_turns = self.min_turns.min(result.turns);
         self.max_turns = self.max_turns.max(result.turns);
         match result.winner {
-            Some(PlayerKind::White) => self.white_wins += 1,
-            Some(PlayerKind::Black) => self.black_wins += 1,
+            Some(CrownfallPlayerKind::White) => self.white_wins += 1,
+            Some(CrownfallPlayerKind::Black) => self.black_wins += 1,
             None => self.draws += 1,
         }
         match result.reason {

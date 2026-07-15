@@ -1,11 +1,11 @@
 use chrono::{DateTime, Utc};
-use eb_crownfall_engine::Game;
+use eb_crownfall_engine::CrownfallGame;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WebGame {
     pub id: String,
-    pub game: Game,
+    pub game: CrownfallGame,
     pub white_player_name: String,
     pub black_player_name: String,
 }

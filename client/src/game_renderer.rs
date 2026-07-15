@@ -1,4 +1,4 @@
-use eb_crownfall_engine::{BOARD_LENGTH, Cell, Piece, PieceKind, PlayerKind};
+use eb_crownfall_engine::{BOARD_LENGTH, CrownfallBoardCell, CrownfallPiece, CrownfallPieceKind, CrownfallPlayerKind};
 use pixels_graphics_lib::prelude::{Coord, Graphics, IndexedImage, coord};
 
 pub const CELL_SIZE: usize = 32;
@@ -48,19 +48,19 @@ impl PieceRenderer {
         }
     }
 
-    pub fn image_for_piece(&self, piece: &Piece) -> &IndexedImage {
+    pub fn image_for_piece(&self, piece: &CrownfallPiece) -> &IndexedImage {
         match piece.kind {
-            PieceKind::Crown => match piece.player {
-                PlayerKind::White => &self.crown_white,
-                PlayerKind::Black => &self.crown_black,
+            CrownfallPieceKind::Crown => match piece.player {
+                CrownfallPlayerKind::White => &self.crown_white,
+                CrownfallPlayerKind::Black => &self.crown_black,
             },
-            PieceKind::Knight => match piece.player {
-                PlayerKind::White => &self.knight_white,
-                PlayerKind::Black => &self.knight_black,
+            CrownfallPieceKind::Knight => match piece.player {
+                CrownfallPlayerKind::White => &self.knight_white,
+                CrownfallPlayerKind::Black => &self.knight_black,
             },
-            PieceKind::Spy => match piece.player {
-                PlayerKind::White => &self.spy_white,
-                PlayerKind::Black => &self.spy_black,
+            CrownfallPieceKind::Spy => match piece.player {
+                CrownfallPlayerKind::White => &self.spy_white,
+                CrownfallPlayerKind::Black => &self.spy_black,
             },
         }
     }
@@ -118,19 +118,19 @@ impl BoardRenderer {
         }
     }
 
-    pub fn cell_at(&self, xy: Coord) -> Option<Cell> {
+    pub fn cell_at(&self, xy: Coord) -> Option<CrownfallBoardCell> {
         let grid = (xy - self.pos) / CELL_SIZE;
         if (0..BOARD_LENGTH as isize).contains(&grid.x)
             && (0..BOARD_LENGTH as isize).contains(&grid.y)
         {
             let (x, y) = self.flip(grid.x as usize, grid.y as usize);
-            Some(Cell::new_coord(x, y))
+            Some(CrownfallBoardCell::new_coord(x, y))
         } else {
             None
         }
     }
 
-    pub fn pos_for(&self, cell: Cell) -> Coord {
+    pub fn pos_for(&self, cell: CrownfallBoardCell) -> Coord {
         let (x, y) = cell.to_coord();
         let (x, y) = self.flip(x, y);
         self.pos + coord!(x, y) * CELL_SIZE

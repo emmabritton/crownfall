@@ -1,18 +1,18 @@
 use eb_crownfall_engine::*;
 
-fn empty_board() -> BoardState {
-    BoardState {
+fn empty_board() -> CrownfallBoardState {
+    CrownfallBoardState {
         cells: [None; BOARD_LENGTH * BOARD_LENGTH],
     }
 }
 
-fn pad_board_to_avoid_attrition(board: &mut BoardState, player: PlayerKind) {
-    board.cells[0] = Some(Piece {
-        kind: PieceKind::Spy,
+fn pad_board_to_avoid_attrition(board: &mut CrownfallBoardState, player: CrownfallPlayerKind) {
+    board.cells[0] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
         player,
     });
-    board.cells[1] = Some(Piece {
-        kind: PieceKind::Knight,
+    board.cells[1] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
         player,
     });
 }
@@ -20,34 +20,34 @@ fn pad_board_to_avoid_attrition(board: &mut BoardState, player: PlayerKind) {
 #[test]
 fn spy_capture_removes_target_from_board() {
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[23] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::White,
+    board.cells[23] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::White,
     });
-    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
-    board.cells[32] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::White,
+    pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
+    board.cells[32] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, _result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(32),
-            to: Cell::new_index(25),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(32),
+            to: CrownfallBoardCell::new_index(25),
         })
         .expect("valid move");
 
@@ -62,34 +62,34 @@ fn knight_pincer_of_two_diagonal_attackers_captures() {
     // Both attackers diagonally ahead of the target, with the straight-ahead cell
     // empty — target (3,3)=24, attackers at (2,4)=30 and (4,4)=32.
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[30] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[30] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
-    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
-    board.cells[39] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
+    board.cells[39] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, _result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(39),
-            to: Cell::new_index(32),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(39),
+            to: CrownfallBoardCell::new_index(32),
         })
         .expect("valid move");
 
@@ -105,34 +105,34 @@ fn knight_beside_target_cannot_complete_a_pincer() {
     // (same row — not in either attacker's forward arc, invalid). Even though one
     // attacker is legitimately positioned, the side attacker disqualifies the pincer.
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[23] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[23] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
-    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
-    board.cells[38] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
+    board.cells[38] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(38),
-            to: Cell::new_index(31),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(38),
+            to: CrownfallBoardCell::new_index(31),
         })
         .expect("valid move");
 
@@ -140,7 +140,7 @@ fn knight_beside_target_cannot_complete_a_pincer() {
         game.board.cells[24].is_some(),
         "a side attacker plus a front attacker is not a valid Knight Capture pincer"
     );
-    assert!(!matches!(result, Some(TurnResult::Capture { .. })));
+    assert!(!matches!(result, Some(CrownfallTurnResult::Capture { .. })));
 }
 
 #[test]
@@ -152,34 +152,34 @@ fn knight_moving_directly_ahead_cannot_complete_a_pincer_even_with_diagonal_part
     // the *directly-ahead* Knight that just moved, not the diagonal one — so it must
     // NOT spring the pincer.
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[32] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[32] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
-    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
-    board.cells[38] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
+    board.cells[38] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(38),
-            to: Cell::new_index(31),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(38),
+            to: CrownfallBoardCell::new_index(31),
         })
         .expect("valid move");
 
@@ -187,7 +187,7 @@ fn knight_moving_directly_ahead_cannot_complete_a_pincer_even_with_diagonal_part
         game.board.cells[24].is_some(),
         "a Knight that just moved directly ahead of the target cannot spring a Knight Capture pincer"
     );
-    assert!(!matches!(result, Some(TurnResult::Capture { .. })));
+    assert!(!matches!(result, Some(CrownfallTurnResult::Capture { .. })));
 }
 
 #[test]
@@ -197,34 +197,34 @@ fn knight_capture_removes_target_and_one_attacker() {
     // (4,4)=32. One White Knight already sits at 31 (directly ahead); the other
     // moves in from (4,5)=39 to 32 (diagonally ahead) to complete the pincer.
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[31] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[31] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
-    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
-    board.cells[39] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
+    board.cells[39] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, _result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(39),
-            to: Cell::new_index(32),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(39),
+            to: CrownfallBoardCell::new_index(32),
         })
         .expect("valid move");
 
@@ -249,54 +249,54 @@ fn high_spy_count_prevents_attrition_despite_low_knight_count() {
     // (README "Losing the Game") — a strong spy count keeps a player in the
     // fight even after their knights are nearly gone.
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[5] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[5] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[6] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::Black,
+    board.cells[6] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[12] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::Black,
+    board.cells[12] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[13] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::Black,
+    board.cells[13] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[31] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[31] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
-    board.cells[39] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[39] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, _result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(39),
-            to: Cell::new_index(32),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(39),
+            to: CrownfallBoardCell::new_index(32),
         })
         .expect("valid move");
 
     assert!(
-        matches!(game.state, GameState::Playing(_)),
+        matches!(game.state, CrownfallGameState::Playing(_)),
         "black should not lose to attrition while still holding three spies, despite being down to one knight"
     );
 }
@@ -308,43 +308,43 @@ fn attrition_triggers_once_both_knights_and_spies_are_depleted() {
     // sole spy is untouched. With Black left at zero knights and one spy,
     // both thresholds are met and White wins by attrition.
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[6] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::Black,
+    board.cells[6] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[23] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::White,
+    board.cells[23] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::White,
     });
-    board.cells[32] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::White,
+    board.cells[32] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, _result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(32),
-            to: Cell::new_index(25),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(32),
+            to: CrownfallBoardCell::new_index(25),
         })
         .expect("valid move");
 
     assert_eq!(
         game.state,
-        GameState::Victory(PlayerKind::White),
+        CrownfallGameState::Victory(CrownfallPlayerKind::White),
         "black should lose to attrition once both knight and spy counts are at or below one"
     );
 }
@@ -358,39 +358,39 @@ fn mutual_knight_exhaustion_from_the_same_capture_is_a_draw() {
     // hit from the very same move, which should be ruled a draw rather than
     // an outright win for whichever side still has a knight.
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[31] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[31] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
-    board.cells[39] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[39] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, _result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(39),
-            to: Cell::new_index(32),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(39),
+            to: CrownfallBoardCell::new_index(32),
         })
         .expect("valid move");
 
     assert_eq!(
         game.state,
-        GameState::Draw(DrawReason::MutualKnightExhaustion),
+        CrownfallGameState::Draw(DrawReason::MutualKnightExhaustion),
         "White ends with one knight and Black with none from the same capture — a draw, not a White win"
     );
 }
@@ -401,34 +401,34 @@ fn knight_pincer_capturing_a_spy_loses_no_knight() {
     // the spy without the README's knight-removal penalty, which only applies
     // when the captured piece was itself a Knight.
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[31] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[31] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
-    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
-    board.cells[39] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
+    board.cells[39] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, _result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(39),
-            to: Cell::new_index(32),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(39),
+            to: CrownfallBoardCell::new_index(32),
         })
         .expect("valid move");
 
@@ -449,34 +449,34 @@ fn crown_partnered_knight_capture_never_loses_the_crown() {
     // (4,4)=32, diagonally ahead of the target at (3,3)=24 — the just-moved Knight
     // must land diagonally (not directly) ahead to spring the pincer.
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[23] = Some(Piece {
-        kind: PieceKind::Crown,
-        player: PlayerKind::White,
+    board.cells[23] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Crown,
+        player: CrownfallPlayerKind::White,
     });
-    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
-    board.cells[39] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
+    board.cells[39] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, _result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(39),
-            to: Cell::new_index(32),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(39),
+            to: CrownfallBoardCell::new_index(32),
         })
         .expect("valid move");
 
@@ -486,9 +486,9 @@ fn crown_partnered_knight_capture_never_loses_the_crown() {
     );
     assert_eq!(
         game.board.cells[23],
-        Some(Piece {
-            kind: PieceKind::Crown,
-            player: PlayerKind::White
+        Some(CrownfallPiece {
+            kind: CrownfallPieceKind::Crown,
+            player: CrownfallPlayerKind::White
         }),
         "the Crown should never be the piece lost"
     );
@@ -502,34 +502,34 @@ fn knight_moving_directly_ahead_cannot_complete_a_pincer_even_with_crown_partner
     // restriction doesn't help here — it's the just-moved Knight landing directly
     // ahead, not diagonally, so it must not spring the pincer.
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[23] = Some(Piece {
-        kind: PieceKind::Crown,
-        player: PlayerKind::White,
+    board.cells[23] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Crown,
+        player: CrownfallPlayerKind::White,
     });
-    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
-    board.cells[38] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
+    board.cells[38] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(38),
-            to: Cell::new_index(31),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(38),
+            to: CrownfallBoardCell::new_index(31),
         })
         .expect("valid move");
 
@@ -537,47 +537,47 @@ fn knight_moving_directly_ahead_cannot_complete_a_pincer_even_with_crown_partner
         game.board.cells[24].is_some(),
         "a Knight that just moved directly ahead of the target cannot spring a Knight Capture pincer, even with a Crown partner"
     );
-    assert!(!matches!(result, Some(TurnResult::Capture { .. })));
+    assert!(!matches!(result, Some(CrownfallTurnResult::Capture { .. })));
 }
 
 #[test]
 fn single_move_capturing_two_pieces_removes_both() {
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[38] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[38] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[23] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::White,
+    board.cells[23] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::White,
     });
-    board.cells[39] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::White,
+    board.cells[39] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::White,
     });
-    board.cells[30] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::White,
+    board.cells[30] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, _result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(30),
-            to: Cell::new_index(31),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(30),
+            to: CrownfallBoardCell::new_index(31),
         })
         .expect("valid move");
 
@@ -597,38 +597,38 @@ fn extra_adjacent_attacker_does_not_block_a_valid_pincer() {
     // alongside two knights that form a valid pincer. The extra piece must not
     // prevent the knight capture from resolving.
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[31] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[31] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
-    board.cells[23] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::White,
+    board.cells[23] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::White,
     });
-    board.cells[39] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[39] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
-    pad_board_to_avoid_attrition(&mut board, PlayerKind::Black);
+    pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(39),
-            to: Cell::new_index(32),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(39),
+            to: CrownfallBoardCell::new_index(32),
         })
         .expect("valid move");
 
@@ -638,40 +638,40 @@ fn extra_adjacent_attacker_does_not_block_a_valid_pincer() {
     );
     assert!(matches!(
         result,
-        Some(TurnResult::Capture { removed, .. }) if removed == Cell::new_index(24)
+        Some(CrownfallTurnResult::Capture { removed, .. }) if removed == CrownfallBoardCell::new_index(24)
     ));
 }
 
 #[test]
 fn crown_cannot_stand_in_for_a_spy() {
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[23] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::White,
+    board.cells[23] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::White,
     });
-    board.cells[32] = Some(Piece {
-        kind: PieceKind::Crown,
-        player: PlayerKind::White,
+    board.cells[32] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Crown,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, _result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(32),
-            to: Cell::new_index(25),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(32),
+            to: CrownfallBoardCell::new_index(25),
         })
         .expect("valid move");
 
@@ -687,34 +687,34 @@ fn moving_into_a_spy_pincer_captures_the_moved_piece() {
     // now that Knights are forward-only) into a pre-existing Black Spy
     // pincer at 14/16.
     let mut board = empty_board();
-    board.cells[14] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::Black,
+    board.cells[14] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[16] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::Black,
+    board.cells[16] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[22] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[22] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
-    pad_board_to_avoid_attrition(&mut board, PlayerKind::White);
+    pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::White);
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(22),
-            to: Cell::new_index(15),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(22),
+            to: CrownfallBoardCell::new_index(15),
         })
         .expect("valid move");
 
@@ -723,22 +723,22 @@ fn moving_into_a_spy_pincer_captures_the_moved_piece() {
         "the moved knight walked into a Spy pincer and should be captured, even though it moved there itself"
     );
     assert!(
-        matches!(result, Some(TurnResult::Capture { removed, .. }) if removed == Cell::new_index(15))
+        matches!(result, Some(CrownfallTurnResult::Capture { removed, .. }) if removed == CrownfallBoardCell::new_index(15))
     );
 }
 
 #[test]
 fn knights_can_move_orthogonally_but_not_backward_or_diagonally() {
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
@@ -747,10 +747,10 @@ fn knights_can_move_orthogonally_but_not_backward_or_diagonally() {
     // Sideways (same row) is legal.
     assert!(
         game.clone()
-            .handle_player_action(PlayerAction::Move {
-                player: PlayerKind::White,
-                from: Cell::new_index(24),
-                to: Cell::new_index(23),
+            .handle_player_action(CrownfallPlayerAction::Move {
+                player: CrownfallPlayerKind::White,
+                from: CrownfallBoardCell::new_index(24),
+                to: CrownfallBoardCell::new_index(23),
             })
             .is_ok()
     );
@@ -758,10 +758,10 @@ fn knights_can_move_orthogonally_but_not_backward_or_diagonally() {
     // Backward (away from the opponent's side) is illegal.
     assert!(
         game.clone()
-            .handle_player_action(PlayerAction::Move {
-                player: PlayerKind::White,
-                from: Cell::new_index(24),
-                to: Cell::new_index(31),
+            .handle_player_action(CrownfallPlayerAction::Move {
+                player: CrownfallPlayerKind::White,
+                from: CrownfallBoardCell::new_index(24),
+                to: CrownfallBoardCell::new_index(31),
             })
             .is_err()
     );
@@ -770,20 +770,20 @@ fn knights_can_move_orthogonally_but_not_backward_or_diagonally() {
     // Knight's capture reach, not a movement destination.
     assert!(
         game.clone()
-            .handle_player_action(PlayerAction::Move {
-                player: PlayerKind::White,
-                from: Cell::new_index(24),
-                to: Cell::new_index(16),
+            .handle_player_action(CrownfallPlayerAction::Move {
+                player: CrownfallPlayerKind::White,
+                from: CrownfallBoardCell::new_index(24),
+                to: CrownfallBoardCell::new_index(16),
             })
             .is_err()
     );
 
     // Straight forward is legal.
     let (game, _) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(24),
-            to: Cell::new_index(17),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(24),
+            to: CrownfallBoardCell::new_index(17),
         })
         .expect("straight-forward knight move should be legal");
     assert!(game.board.cells[17].is_some());
@@ -796,43 +796,43 @@ fn crown_walking_into_a_pincer_loses_immediately_even_mid_capture() {
     // black spies — the crown's own capture loses instantly, taking priority over the
     // capture it was attempting.
     let mut board = empty_board();
-    board.cells[1] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::Black,
+    board.cells[1] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[7] = Some(Piece {
-        kind: PieceKind::Spy,
-        player: PlayerKind::Black,
+    board.cells[7] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Spy,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[2] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[2] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
-    board.cells[15] = Some(Piece {
-        kind: PieceKind::Crown,
-        player: PlayerKind::White,
+    board.cells[15] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Crown,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(15),
-            to: Cell::new_index(8),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(15),
+            to: CrownfallBoardCell::new_index(8),
         })
         .expect("valid move");
 
     assert_eq!(
         game.state,
-        GameState::Victory(PlayerKind::Black),
+        CrownfallGameState::Victory(CrownfallPlayerKind::Black),
         "black wins: the crown's own capture takes priority over the move it was attempting"
     );
     assert!(game.board.cells[8].is_none(), "the crown should be removed");
@@ -841,7 +841,7 @@ fn crown_walking_into_a_pincer_loses_immediately_even_mid_capture() {
         "the spy the crown tried to capture survives"
     );
     assert!(
-        matches!(result, Some(TurnResult::Victory { player:PlayerKind::Black,surrounded_crown }) if surrounded_crown == Cell::new_index(8))
+        matches!(result, Some(CrownfallTurnResult::Victory { player:CrownfallPlayerKind::Black,surrounded_crown }) if surrounded_crown == CrownfallBoardCell::new_index(8))
     );
 }
 
@@ -853,39 +853,39 @@ fn crown_capture_needs_no_knight_arc_any_two_adjacent_sides_count() {
     // a valid attacker for an ordinary Knight Capture (see
     // `knight_beside_target_cannot_complete_a_pincer`).
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Crown,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Crown,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[31] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[31] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
-    board.cells[32] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[32] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(32),
-            to: Cell::new_index(25),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(32),
+            to: CrownfallBoardCell::new_index(25),
         })
         .expect("valid move");
 
     assert_eq!(
         game.state,
-        GameState::Victory(PlayerKind::White),
+        CrownfallGameState::Victory(CrownfallPlayerKind::White),
         "two knights on any two of the crown's sides, direct or beside, should capture it"
     );
     assert!(
@@ -893,7 +893,7 @@ fn crown_capture_needs_no_knight_arc_any_two_adjacent_sides_count() {
         "the crown should be removed"
     );
     assert!(
-        matches!(result, Some(TurnResult::Victory { player: PlayerKind::White, surrounded_crown }) if surrounded_crown == Cell::new_index(24))
+        matches!(result, Some(CrownfallTurnResult::Victory { player: CrownfallPlayerKind::White, surrounded_crown }) if surrounded_crown == CrownfallBoardCell::new_index(24))
     );
 }
 
@@ -905,39 +905,39 @@ fn crown_capture_via_a_knights_diagonal_reach_when_that_knight_just_moved() {
     // from (4,5)=39 to (4,4)=32 — diagonally ahead of the Crown, not one of its
     // orthogonal neighbours — completing the pincer.
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Crown,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Crown,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[23] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[23] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
-    board.cells[39] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[39] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(39),
-            to: Cell::new_index(32),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(39),
+            to: CrownfallBoardCell::new_index(32),
         })
         .expect("valid move");
 
     assert_eq!(
         game.state,
-        GameState::Victory(PlayerKind::White),
+        CrownfallGameState::Victory(CrownfallPlayerKind::White),
         "a Knight moving into a diagonal-forward cell of the Crown should complete the pincer"
     );
     assert!(
@@ -945,7 +945,7 @@ fn crown_capture_via_a_knights_diagonal_reach_when_that_knight_just_moved() {
         "the crown should be removed"
     );
     assert!(
-        matches!(result, Some(TurnResult::Victory { player: PlayerKind::White, surrounded_crown }) if surrounded_crown == Cell::new_index(24))
+        matches!(result, Some(CrownfallTurnResult::Victory { player: CrownfallPlayerKind::White, surrounded_crown }) if surrounded_crown == CrownfallBoardCell::new_index(24))
     );
 }
 
@@ -957,33 +957,33 @@ fn crown_capture_diagonal_reach_does_not_count_for_a_stationary_knight() {
     // the actively-moving Knight, so this must NOT capture: only one orthogonal
     // attacker (the mover) is present, and one attacker alone can't complete a pincer.
     let mut board = empty_board();
-    board.cells[24] = Some(Piece {
-        kind: PieceKind::Crown,
-        player: PlayerKind::Black,
+    board.cells[24] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Crown,
+        player: CrownfallPlayerKind::Black,
     });
-    board.cells[32] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[32] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
-    board.cells[30] = Some(Piece {
-        kind: PieceKind::Knight,
-        player: PlayerKind::White,
+    board.cells[30] = Some(CrownfallPiece {
+        kind: CrownfallPieceKind::Knight,
+        player: CrownfallPlayerKind::White,
     });
 
-    let game = Game {
+    let game = CrownfallGame {
         board,
-        state: GameState::Playing(PlayState::WaitingForInput {
-            player: PlayerKind::White,
+        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
         }),
         history: Vec::new(),
         moves_since_capture: 0,
     };
 
     let (game, result) = game
-        .handle_player_action(PlayerAction::Move {
-            player: PlayerKind::White,
-            from: Cell::new_index(30),
-            to: Cell::new_index(23),
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(30),
+            to: CrownfallBoardCell::new_index(23),
         })
         .expect("valid move");
 
@@ -991,5 +991,5 @@ fn crown_capture_diagonal_reach_does_not_count_for_a_stationary_knight() {
         game.board.cells[24].is_some(),
         "a Knight already sitting diagonally cannot complete a crown pincer unless it's the piece that just moved"
     );
-    assert!(!matches!(result, Some(TurnResult::Victory { .. })));
+    assert!(!matches!(result, Some(CrownfallTurnResult::Victory { .. })));
 }

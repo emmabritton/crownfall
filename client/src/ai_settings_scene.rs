@@ -1,6 +1,6 @@
 use crate::BACKGROUND;
 use crate::{SceneName, SceneResult};
-use eb_crownfall_engine::ai::{Difficulty, Personality};
+use eb_crownfall_engine::ai::{CrownfallDifficulty, CrownfallPersonality};
 use pixels_graphics_lib::prelude::SceneUpdateResult::Nothing;
 use pixels_graphics_lib::prelude::*;
 use pixels_graphics_lib::ui::PixelView;
@@ -9,25 +9,25 @@ use pixels_graphics_lib::ui::helpers::ToggleButtonGroup;
 use pixels_graphics_lib::ui::styles::UiStyle;
 use pixels_graphics_lib::ui::toggle_button::ToggleButton;
 
-const DIFFICULTIES: [(Difficulty, &str); 4] = [
-    (Difficulty::Easy, "Easy"),
-    (Difficulty::Medium, "Medium"),
-    (Difficulty::Hard, "Hard"),
-    (Difficulty::VeryHard, "Very Hard"),
+const DIFFICULTIES: [(CrownfallDifficulty, &str); 4] = [
+    (CrownfallDifficulty::Easy, "Easy"),
+    (CrownfallDifficulty::Medium, "Medium"),
+    (CrownfallDifficulty::Hard, "Hard"),
+    (CrownfallDifficulty::VeryHard, "Very Hard"),
 ];
 
-const PERSONALITIES: [(Personality, &str); 3] = [
-    (Personality::Defensive, "Defensive"),
-    (Personality::Balanced, "Balanced"),
-    (Personality::Aggressive, "Aggressive"),
+const PERSONALITIES: [(CrownfallPersonality, &str); 3] = [
+    (CrownfallPersonality::Defensive, "Defensive"),
+    (CrownfallPersonality::Balanced, "Balanced"),
+    (CrownfallPersonality::Aggressive, "Aggressive"),
 ];
 
-const DEFAULT_DIFFICULTY: Difficulty = Difficulty::Hard;
-const DEFAULT_PERSONALITY: Personality = Personality::Balanced;
+const DEFAULT_DIFFICULTY: CrownfallDifficulty = CrownfallDifficulty::Hard;
+const DEFAULT_PERSONALITY: CrownfallPersonality = CrownfallPersonality::Balanced;
 
 pub struct AiSettingsScene {
-    difficulty_buttons: ToggleButtonGroup<Difficulty>,
-    personality_buttons: ToggleButtonGroup<Personality>,
+    difficulty_buttons: ToggleButtonGroup<CrownfallDifficulty>,
+    personality_buttons: ToggleButtonGroup<CrownfallPersonality>,
     back_button: Button,
     start_button: Button,
     result: SceneUpdateResult<SceneResult, SceneName>,

@@ -21,7 +21,7 @@ use serde_big_array::BigArray;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum PieceKind {
+pub enum CrownfallPieceKind {
     Crown,
     Knight,
     Spy,
@@ -33,21 +33,21 @@ pub const BOARD_SIZE: (usize, usize) = (BOARD_LENGTH, BOARD_LENGTH);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum PlayState {
+pub enum CrownfallPlayState {
     WaitingForInput {
-        player: PlayerKind,
+        player: CrownfallPlayerKind,
     },
     MustRemoveKnight {
-        player: PlayerKind,
-        options: (Cell, Cell),
+        player: CrownfallPlayerKind,
+        options: (CrownfallBoardCell, CrownfallBoardCell),
     },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum GameState {
-    Playing(PlayState),
-    Victory(PlayerKind),
+pub enum CrownfallGameState {
+    Playing(CrownfallPlayState),
+    Victory(CrownfallPlayerKind),
     Draw(DrawReason),
 }
 
@@ -78,23 +78,23 @@ impl DrawReason {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Piece {
-    pub kind: PieceKind,
-    pub player: PlayerKind,
+pub struct CrownfallPiece {
+    pub kind: CrownfallPieceKind,
+    pub player: CrownfallPlayerKind,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct BoardState {
+pub struct CrownfallBoardState {
     #[cfg_attr(feature = "serde", serde(with = "BigArray"))]
-    pub cells: [Option<Piece>; BOARD_SIZE.0 * BOARD_SIZE.1],
+    pub cells: [Option<CrownfallPiece>; BOARD_SIZE.0 * BOARD_SIZE.1],
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Game {
-    pub board: BoardState,
-    pub state: GameState,
+pub struct CrownfallGame {
+    pub board: CrownfallBoardState,
+    pub state: CrownfallGameState,
     /// Hashes of past positions (board + player to move), used to detect
     /// threefold repetition. Grows for the lifetime of the game.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -107,17 +107,17 @@ pub struct Game {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Cell {
+pub struct CrownfallBoardCell {
     pub index: usize,
 }
 
-impl Cell {
-    pub fn new_index(index: usize) -> Cell {
-        Cell { index }
+impl CrownfallBoardCell {
+    pub fn new_index(index: usize) -> CrownfallBoardCell {
+        CrownfallBoardCell { index }
     }
 
-    pub fn new_coord(x: usize, y: usize) -> Cell {
-        Cell {
+    pub fn new_coord(x: usize, y: usize) -> CrownfallBoardCell {
+        CrownfallBoardCell {
             index: x + y * BOARD_LENGTH,
         }
     }
@@ -134,45 +134,45 @@ impl Cell {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum PlayerKind {
+pub enum CrownfallPlayerKind {
     White,
     Black,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum PlayerAction {
+pub enum CrownfallPlayerAction {
     Move {
-        player: PlayerKind,
-        from: Cell,
-        to: Cell,
+        player: CrownfallPlayerKind,
+        from: CrownfallBoardCell,
+        to: CrownfallBoardCell,
     },
     KnightRemoval {
-        player: PlayerKind,
-        at: Cell,
+        player: CrownfallPlayerKind,
+        at: CrownfallBoardCell,
     },
     Surrender {
-        player: PlayerKind,
+        player: CrownfallPlayerKind,
     },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum TurnResult {
+pub enum CrownfallTurnResult {
     PieceMove {
-        player: PlayerKind,
-        from: Cell,
-        to: Cell,
+        player: CrownfallPlayerKind,
+        from: CrownfallBoardCell,
+        to: CrownfallBoardCell,
     },
     Capture {
-        player: PlayerKind,
-        last_move_from: Cell,
-        last_move_to: Cell,
-        removed: Cell,
-        second_attacker: Cell,
+        player: CrownfallPlayerKind,
+        last_move_from: CrownfallBoardCell,
+        last_move_to: CrownfallBoardCell,
+        removed: CrownfallBoardCell,
+        second_attacker: CrownfallBoardCell,
     },
     Victory {
-        player: PlayerKind,
-        surrounded_crown: Cell,
+        player: CrownfallPlayerKind,
+        surrounded_crown: CrownfallBoardCell,
     },
 }

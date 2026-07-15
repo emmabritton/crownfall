@@ -1,8 +1,8 @@
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::{BACKGROUND, SceneName, SceneResult};
-use eb_crownfall_engine::ai::{Difficulty, Personality, best_move};
+use eb_crownfall_engine::ai::{CrownfallDifficulty, CrownfallPersonality, best_move};
 use eb_crownfall_engine::{
-    Cell, Game, GameState, Piece, PlayState, PlayerAction, PlayerKind, TurnResult,
+    CrownfallBoardCell, CrownfallGame, CrownfallGameState, CrownfallPiece, CrownfallPlayState, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult,
 };
 use pixels_graphics_lib::MouseData;
 use pixels_graphics_lib::buffer_graphics_lib::Graphics;
@@ -10,32 +10,32 @@ use pixels_graphics_lib::prelude::*;
 use pixels_graphics_lib::scenes::SceneUpdateResult::Nothing;
 
 const BOARD_POS: Coord = Coord::new(16, 16);
-const HUMAN: PlayerKind = PlayerKind::White;
-const AI: PlayerKind = PlayerKind::Black;
+const HUMAN: CrownfallPlayerKind = CrownfallPlayerKind::White;
+const AI: CrownfallPlayerKind = CrownfallPlayerKind::Black;
 /// Small pause before the AI "moves" so its turn doesn't feel instantaneous.
 const AI_THINK_DELAY: f64 = 0.4;
 const MOVE_ANIMATION_DURATION: f64 = 0.25;
 
 struct DragState {
-    origin: Cell,
-    valid_destinations: Vec<Cell>,
+    origin: CrownfallBoardCell,
+    valid_destinations: Vec<CrownfallBoardCell>,
     pointer: Coord,
 }
 
 /// Animates the AI's piece sliding from `from` to `to` instead of it snapping
 /// straight into place.
 struct MoveAnimation {
-    piece: Piece,
-    from: Cell,
-    to: Cell,
-    pending: Game,
+    piece: CrownfallPiece,
+    from: CrownfallBoardCell,
+    to: CrownfallBoardCell,
+    pending: CrownfallGame,
     elapsed: f64,
 }
 
 pub struct AiGameScene {
-    game: Game,
-    difficulty: Difficulty,
-    personality: Personality,
+    game: CrownfallGame,
+    difficulty: CrownfallDifficulty,
+    personality: CrownfallPersonality,
     drag: Option<DragState>,
     ai_timer: Option<Timer>,
     animation: Option<MoveAnimation>,
@@ -45,9 +45,9 @@ pub struct AiGameScene {
 }
 
 impl AiGameScene {
-    pub fn new(difficulty: Difficulty, personality: Personality) -> Box<AiGameScene> {
+    pub fn new(difficulty: CrownfallDifficulty, personality: CrownfallPersonality) -> Box<AiGameScene> {
         Box::new(AiGameScene {
-            game: Game::default(),
+            game: CrownfallGame::default(),
             difficulty,
             personality,
             drag: None,
@@ -64,7 +64,7 @@ impl AiGameScene {
     }
 
     /// Begin animating the AI's move rather than applying `next` immediately.
-    fn animate_or_apply(&mut self, next: Game, turn_result: Option<TurnResult>) {
+    fn animate_or_apply(&mut self, next: CrownfallGame, turn_result: Option<CrownfallTurnResult>) {
         let move_cells = turn_result.as_ref().and_then(move_cells);
         if let Some((from, to)) = move_cells
             && let Some(piece) = self.game.board.cells[from.index]
@@ -84,24 +84,24 @@ impl AiGameScene {
 
 /// Extracts the (from, to) cells of a move from a turn result, if it
 /// represents a piece moving on the board.
-fn move_cells(result: &TurnResult) -> Option<(Cell, Cell)> {
+fn move_cells(result: &CrownfallTurnResult) -> Option<(CrownfallBoardCell, CrownfallBoardCell)> {
     match result {
-        TurnResult::PieceMove { from, to, .. } => Some((*from, *to)),
-        TurnResult::Capture {
+        CrownfallTurnResult::PieceMove { from, to, .. } => Some((*from, *to)),
+        CrownfallTurnResult::Capture {
             last_move_from,
             last_move_to,
             ..
         } => Some((*last_move_from, *last_move_to)),
-        TurnResult::Victory { .. } => None,
+        CrownfallTurnResult::Victory { .. } => None,
     }
 }
 
-fn is_humans_turn(game: &Game) -> bool {
-    matches!(&game.state, GameState::Playing(state) if state.player() == HUMAN)
+fn is_humans_turn(game: &CrownfallGame) -> bool {
+    matches!(&game.state, CrownfallGameState::Playing(state) if state.player() == HUMAN)
 }
 
-fn is_ais_turn(game: &Game) -> bool {
-    matches!(&game.state, GameState::Playing(state) if state.player() == AI)
+fn is_ais_turn(game: &CrownfallGame) -> bool {
+    matches!(&game.state, CrownfallGameState::Playing(state) if state.player() == AI)
 }
 
 impl Scene<SceneResult, SceneName> for AiGameScene {
@@ -116,7 +116,7 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
                 continue;
             }
             if let Some(cell) = cell {
-                let xy = self.board_renderer.pos_for(Cell::new_index(i));
+                let xy = self.board_renderer.pos_for(CrownfallBoardCell::new_index(i));
                 let image = self.piece_renderer.image_for_piece(cell);
                 graphics.draw_indexed_image(xy, image);
             }
@@ -194,7 +194,7 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
         if target == drag.origin || !drag.valid_destinations.contains(&target) {
             return;
         }
-        let action = PlayerAction::Move {
+        let action = CrownfallPlayerAction::Move {
             player: HUMAN,
             from: drag.origin,
             to: target,
@@ -237,14 +237,14 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
     }
 
     fn resuming(&mut self, _: Option<SceneResult>) {
-        self.game = Game::default();
+        self.game = CrownfallGame::default();
         self.drag = None;
         self.ai_timer = None;
         self.animation = None;
     }
 }
 
-fn draw_status(game: &Game, graphics: &mut Graphics) {
+fn draw_status(game: &CrownfallGame, graphics: &mut Graphics) {
     let pos = coord!(260, 16);
     graphics.draw_text(
         "White: You",
@@ -270,10 +270,10 @@ fn draw_status(game: &Game, graphics: &mut Graphics) {
     );
 }
 
-fn state_to_text(state: &GameState) -> String {
+fn state_to_text(state: &CrownfallGameState) -> String {
     match state {
-        GameState::Playing(state) => match state {
-            PlayState::WaitingForInput { player } => {
+        CrownfallGameState::Playing(state) => match state {
+            CrownfallPlayState::WaitingForInput { player } => {
                 let name = if player == &HUMAN {
                     "you"
                 } else {
@@ -281,7 +281,7 @@ fn state_to_text(state: &GameState) -> String {
                 };
                 format!("Waiting for {name}")
             }
-            PlayState::MustRemoveKnight { player, options } => {
+            CrownfallPlayState::MustRemoveKnight { player, options } => {
                 let name = if player == &HUMAN {
                     "You"
                 } else {
@@ -294,7 +294,7 @@ fn state_to_text(state: &GameState) -> String {
                 )
             }
         },
-        GameState::Victory(player) => {
+        CrownfallGameState::Victory(player) => {
             let name = if player == &HUMAN {
                 "You win!"
             } else {
@@ -302,6 +302,6 @@ fn state_to_text(state: &GameState) -> String {
             };
             name.to_string()
         }
-        GameState::Draw(reason) => format!("Draw ({})", reason.description()),
+        CrownfallGameState::Draw(reason) => format!("Draw ({})", reason.description()),
     }
 }

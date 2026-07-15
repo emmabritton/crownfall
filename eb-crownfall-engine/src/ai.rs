@@ -8,7 +8,7 @@
 //! GBA's ARM7TDMI, where a per-node heap clone of the history would dwarf
 //! the actual search work.
 use crate::tables::{CELL_COUNT, DIST};
-use crate::{BOARD_LENGTH, BoardState, Cell, Game, GameState, PieceKind, PlayerAction, PlayerKind};
+use crate::{BOARD_LENGTH, CrownfallBoardCell, CrownfallBoardState, CrownfallGame, CrownfallGameState, CrownfallPieceKind, CrownfallPlayerAction, CrownfallPlayerKind};
 
 /// Manhattan distance is at most 2*(BOARD_LENGTH-1) (opposite corners);
 /// subtracting it from this yields a "closer is bigger" score.
@@ -31,13 +31,13 @@ struct MoveList {
 /// history is append-only, so restoring it is just a truncate (which keeps
 /// the Vec's capacity — no churn).
 struct Undo {
-    board: BoardState,
-    state: GameState,
+    board: CrownfallBoardState,
+    state: CrownfallGameState,
     moves_since_capture: u16,
     history_len: usize,
 }
 
-fn snapshot(game: &Game) -> Undo {
+fn snapshot(game: &CrownfallGame) -> Undo {
     Undo {
         board: game.board,
         state: game.state,
@@ -46,7 +46,7 @@ fn snapshot(game: &Game) -> Undo {
     }
 }
 
-fn restore(game: &mut Game, undo: &Undo) {
+fn restore(game: &mut CrownfallGame, undo: &Undo) {
     game.board = undo.board;
     game.state = undo.state;
     game.moves_since_capture = undo.moves_since_capture;
@@ -57,20 +57,20 @@ fn restore(game: &mut Game, undo: &Undo) {
 /// sequences at the cost of move time (7x7 board, ~9 pieces/side keeps the
 /// branching factor low enough for `VeryHard` to still respond quickly).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Difficulty {
+pub enum CrownfallDifficulty {
     Easy,
     Medium,
     Hard,
     VeryHard,
 }
 
-impl Difficulty {
+impl CrownfallDifficulty {
     pub const fn depth(self) -> u8 {
         match self {
-            Difficulty::Easy => 1,
-            Difficulty::Medium => 2,
-            Difficulty::Hard => 3,
-            Difficulty::VeryHard => 4,
+            CrownfallDifficulty::Easy => 1,
+            CrownfallDifficulty::Medium => 2,
+            CrownfallDifficulty::Hard => 3,
+            CrownfallDifficulty::VeryHard => 4,
         }
     }
 }
@@ -81,7 +81,7 @@ impl Difficulty {
 /// defense) so `evaluate(game, player) == -evaluate(game, player.opposite())`
 /// still holds — negamax's `-negamax(...)` recursion depends on that.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Personality {
+pub enum CrownfallPersonality {
     /// Values holding onto material over board position — trades and
     /// advances reluctantly, happy to sit back on a material edge.
     Defensive,
@@ -100,24 +100,24 @@ struct Weights {
     crown_proximity: i32,
 }
 
-impl Personality {
+impl CrownfallPersonality {
     const fn weights(self) -> Weights {
         match self {
-            Personality::Defensive => Weights {
+            CrownfallPersonality::Defensive => Weights {
                 crown: 1000,
                 knight: 35,
                 spy: 25,
                 mobility: 1,
                 crown_proximity: 1,
             },
-            Personality::Balanced => Weights {
+            CrownfallPersonality::Balanced => Weights {
                 crown: 1000,
                 knight: 30,
                 spy: 20,
                 mobility: 1,
                 crown_proximity: 2,
             },
-            Personality::Aggressive => Weights {
+            CrownfallPersonality::Aggressive => Weights {
                 crown: 1000,
                 knight: 25,
                 spy: 15,
@@ -134,24 +134,24 @@ impl Personality {
 /// `depth` is typically `Difficulty::depth()`, kept as a raw `u8` here so
 /// analysis tools (see `examples/simulate.rs`) can probe arbitrary depths.
 pub fn best_move(
-    game: &Game,
-    player: PlayerKind,
+    game: &CrownfallGame,
+    player: CrownfallPlayerKind,
     depth: u8,
-    personality: Personality,
-) -> Option<PlayerAction> {
+    personality: CrownfallPersonality,
+) -> Option<CrownfallPlayerAction> {
     // The one clone of the whole search — every node below mutates this copy
     // in place and rolls it back.
     let mut game = game.clone();
     let moves = collect_moves(&game.board, player);
-    let mut best: Option<PlayerAction> = None;
+    let mut best: Option<CrownfallPlayerAction> = None;
     let mut best_score = i32::MIN;
     let mut alpha = i32::MIN + 1;
     let beta = i32::MAX - 1;
     for &(from, to) in &moves.moves[..moves.len] {
-        let action = PlayerAction::Move {
+        let action = CrownfallPlayerAction::Move {
             player,
-            from: Cell::new_index(from as usize),
-            to: Cell::new_index(to as usize),
+            from: CrownfallBoardCell::new_index(from as usize),
+            to: CrownfallBoardCell::new_index(to as usize),
         };
         let undo = snapshot(&game);
         // `apply_action_quiet` leaves the game untouched on Err, so no
@@ -180,23 +180,23 @@ pub fn best_move(
 }
 
 fn negamax(
-    game: &mut Game,
-    player: PlayerKind,
+    game: &mut CrownfallGame,
+    player: CrownfallPlayerKind,
     depth: u8,
-    personality: Personality,
+    personality: CrownfallPersonality,
     mut alpha: i32,
     beta: i32,
 ) -> i32 {
     match game.state {
-        GameState::Victory(winner) => {
+        CrownfallGameState::Victory(winner) => {
             return if winner == player {
                 VICTORY_SCORE
             } else {
                 -VICTORY_SCORE
             };
         }
-        GameState::Draw(_) => return 0,
-        GameState::Playing(_) => {}
+        CrownfallGameState::Draw(_) => return 0,
+        CrownfallGameState::Playing(_) => {}
     }
     if depth == 0 {
         return evaluate(game, player, personality);
@@ -209,10 +209,10 @@ fn negamax(
 
     let mut best = i32::MIN + 1;
     for &(from, to) in &moves.moves[..moves.len] {
-        let action = PlayerAction::Move {
+        let action = CrownfallPlayerAction::Move {
             player,
-            from: Cell::new_index(from as usize),
-            to: Cell::new_index(to as usize),
+            from: CrownfallBoardCell::new_index(from as usize),
+            to: CrownfallBoardCell::new_index(to as usize),
         };
         let undo = snapshot(game);
         if game.apply_action_quiet(action).is_err() {
@@ -240,7 +240,7 @@ fn negamax(
     best
 }
 
-fn collect_moves(board: &BoardState, player: PlayerKind) -> MoveList {
+fn collect_moves(board: &CrownfallBoardState, player: CrownfallPlayerKind) -> MoveList {
     let mut list = MoveList {
         moves: [(0, 0); MAX_MOVES],
         len: 0,
@@ -249,7 +249,7 @@ fn collect_moves(board: &BoardState, player: PlayerKind) -> MoveList {
         if let Some(piece) = board.cells[index]
             && piece.player == player
         {
-            for &to in board.move_candidates(Cell::new_index(index)) {
+            for &to in board.move_candidates(CrownfallBoardCell::new_index(index)) {
                 if board.cells[to as usize].is_none() {
                     list.moves[list.len] = (index as u8, to);
                     list.len += 1;
@@ -260,9 +260,9 @@ fn collect_moves(board: &BoardState, player: PlayerKind) -> MoveList {
     list
 }
 
-fn crown_index(board: &BoardState, player: PlayerKind) -> Option<usize> {
+fn crown_index(board: &CrownfallBoardState, player: CrownfallPlayerKind) -> Option<usize> {
     board.cells.iter().position(|piece| {
-        matches!(piece, Some(piece) if piece.player == player && piece.kind == PieceKind::Crown)
+        matches!(piece, Some(piece) if piece.player == player && piece.kind == CrownfallPieceKind::Crown)
     })
 }
 
@@ -275,7 +275,7 @@ fn crown_index(board: &BoardState, player: PlayerKind) -> Option<usize> {
 /// whole thing is a single pass over the board (evaluate runs at every leaf
 /// of the search — this is the hottest loop in the crate after
 /// `apply_action` itself).
-fn evaluate(game: &Game, player: PlayerKind, personality: Personality) -> i32 {
+fn evaluate(game: &CrownfallGame, player: CrownfallPlayerKind, personality: CrownfallPersonality) -> i32 {
     let weights = personality.weights();
     let board = &game.board;
     // Proximity to a Crown that's already been captured is meaningless, so a
@@ -295,18 +295,18 @@ fn evaluate(game: &Game, player: PlayerKind, personality: Personality) -> i32 {
 
         material += sign
             * match piece.kind {
-                PieceKind::Crown => weights.crown,
-                PieceKind::Knight => weights.knight,
-                PieceKind::Spy => weights.spy,
+                CrownfallPieceKind::Crown => weights.crown,
+                CrownfallPieceKind::Knight => weights.knight,
+                CrownfallPieceKind::Spy => weights.spy,
             };
 
-        for &to in board.move_candidates(Cell::new_index(index)) {
+        for &to in board.move_candidates(CrownfallBoardCell::new_index(index)) {
             if board.cells[to as usize].is_none() {
                 mobility += sign;
             }
         }
 
-        if piece.kind != PieceKind::Crown {
+        if piece.kind != CrownfallPieceKind::Crown {
             let target_crown = if mine { enemy_crown } else { own_crown };
             if let Some(crown) = target_crown {
                 proximity += sign * (MAX_DISTANCE - DIST[crown][index] as i32);

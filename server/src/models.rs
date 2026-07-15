@@ -1,5 +1,5 @@
 use chrono::Utc;
-use eb_crownfall_engine::{Game, PlayerAction, PlayerKind, TurnResult};
+use eb_crownfall_engine::{CrownfallGame, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult};
 use networking::models::{PendingGame, WebGame};
 use networking::packet::{GameId, PendingGameState, PerformActionState, Username};
 use networking::server::ClientId;
@@ -112,7 +112,7 @@ impl AppState {
         let active_game = ServerActiveGame {
             game: WebGame {
                 id: id.to_string(),
-                game: Game::default(),
+                game: CrownfallGame::default(),
                 white_player_name,
                 black_player_name: username,
             },
@@ -143,16 +143,16 @@ impl AppState {
         &mut self,
         id: &str,
         client_id: ClientId,
-        action: PlayerAction,
-    ) -> Result<(ServerActiveGame, Option<TurnResult>), PerformActionState> {
+        action: CrownfallPlayerAction,
+    ) -> Result<(ServerActiveGame, Option<CrownfallTurnResult>), PerformActionState> {
         let active_game = self
             .games
             .get_mut(id)
             .ok_or(PerformActionState::InvalidGame)?;
 
         let expected_client = match action.player() {
-            PlayerKind::White => active_game.white_player,
-            PlayerKind::Black => active_game.black_player,
+            CrownfallPlayerKind::White => active_game.white_player,
+            CrownfallPlayerKind::Black => active_game.black_player,
         };
         if expected_client != client_id {
             return Err(PerformActionState::NotYourTurn);

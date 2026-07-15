@@ -1,6 +1,6 @@
 use crate::error::NetworkingError;
 use crate::models::{PendingGame, WebGame};
-use eb_crownfall_engine::{PlayerAction, TurnResult};
+use eb_crownfall_engine::{CrownfallPlayerAction, CrownfallTurnResult};
 use serde::{Deserialize, Serialize};
 
 pub type GameId = String;
@@ -54,9 +54,9 @@ pub enum Packet {
     //return state of pending game
     PollPendingGameResponse(PendingGameState),
     //sent by server when game changes
-    GameUpdateCommand(WebGame, Option<TurnResult>),
+    GameUpdateCommand(WebGame, Option<CrownfallTurnResult>),
     //perform action
-    PerformActionRequest(GameId, PlayerAction),
+    PerformActionRequest(GameId, CrownfallPlayerAction),
     //return state of action
     PerformActionResponse(PerformActionState),
     //client has left game

@@ -1,20 +1,20 @@
-use crate::{Cell, PlayerKind};
+use crate::{CrownfallBoardCell, CrownfallPlayerKind};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum GameError {
+pub enum CrownfallError {
     #[error("Player {0:?} tried to remove an nonexistent knight at {1:?}")]
-    EmptyKnightRemoval(PlayerKind, Cell),
+    EmptyKnightRemoval(CrownfallPlayerKind, CrownfallBoardCell),
     #[error("Player {0:?} tried to remove an enemy knight at {1:?}")]
-    EnemyKnightRemoval(PlayerKind, Cell),
+    EnemyKnightRemoval(CrownfallPlayerKind, CrownfallBoardCell),
     #[error("Player {0:?} tried to act out of turn")]
-    NotYourTurn(PlayerKind),
+    NotYourTurn(CrownfallPlayerKind),
     #[error("Player {0:?} tried to act after the game had already ended")]
-    GameOver(PlayerKind),
+    GameOver(CrownfallPlayerKind),
     #[error("Player {0:?} tried to move a nonexistent piece at {1:?}")]
-    EmptyMove(PlayerKind, Cell),
+    EmptyMove(CrownfallPlayerKind, CrownfallBoardCell),
     #[error("Player {0:?} tried to move an enemy piece at {1:?}")]
-    EnemyMove(PlayerKind, Cell),
+    EnemyMove(CrownfallPlayerKind, CrownfallBoardCell),
     #[error("Player {0:?} tried to move from {1:?} to invalid destination {2:?}")]
-    InvalidDestination(PlayerKind, Cell, Cell),
+    InvalidDestination(CrownfallPlayerKind, CrownfallBoardCell, CrownfallBoardCell),
 }

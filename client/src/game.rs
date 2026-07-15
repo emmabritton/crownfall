@@ -2,7 +2,7 @@ use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::net::{poll, send};
 use crate::{BACKGROUND, HEIGHT, SceneName, SceneResult, WIDTH, username};
 use eb_crownfall_engine::{
-    Cell, GameState, Piece, PlayState, PlayerAction, PlayerKind, TurnResult,
+    CrownfallBoardCell, CrownfallGameState, CrownfallPiece, CrownfallPlayState, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult,
 };
 use networking::models::WebGame;
 use networking::packet::{GameId, NetGameState, Packet, PerformActionState};
@@ -23,17 +23,17 @@ enum GameClientState {
 }
 
 struct DragState {
-    origin: Cell,
-    valid_destinations: Vec<Cell>,
+    origin: CrownfallBoardCell,
+    valid_destinations: Vec<CrownfallBoardCell>,
     pointer: Coord,
 }
 
 /// Animates a piece sliding from `from` to `to` after an update from the other
 /// player arrives, rather than snapping straight to the new board state.
 struct MoveAnimation {
-    piece: Piece,
-    from: Cell,
-    to: Cell,
+    piece: CrownfallPiece,
+    from: CrownfallBoardCell,
+    to: CrownfallBoardCell,
     pending: WebGame,
     is_white: bool,
     elapsed: f64,
@@ -46,7 +46,7 @@ pub struct GameScene {
     drag: Option<DragState>,
     animation: Option<MoveAnimation>,
     highlight_image: IndexedImage,
-    last_move: Option<TurnResult>,
+    last_move: Option<CrownfallTurnResult>,
 }
 
 impl GameScene {
@@ -68,14 +68,14 @@ impl GameScene {
 
     /// Begin animating `game`'s incoming update if it was the other player moving
     /// a piece; otherwise apply it immediately.
-    fn apply_update(&mut self, game: WebGame, is_white: bool, turn_result: Option<&TurnResult>) {
+    fn apply_update(&mut self, game: WebGame, is_white: bool, turn_result: Option<&CrownfallTurnResult>) {
         self.board_renderer.set_flipped(!is_white);
         // A new update arrived mid-animation; snap to the previous target first.
         if let Some(anim) = self.animation.take() {
             self.state = GameClientState::Playing(anim.pending, anim.is_white);
         }
         let moved_by_other = turn_result.and_then(move_cells).filter(|(player, _, _)| {
-            let mover_is_white = *player == PlayerKind::White;
+            let mover_is_white = *player == CrownfallPlayerKind::White;
             mover_is_white != is_white
         });
         if let Some((_, from, to)) = moved_by_other
@@ -98,22 +98,22 @@ impl GameScene {
 
 /// Extracts the (player, from, to) cells of a move from a turn result, if it
 /// represents a piece moving on the board.
-fn move_cells(result: &TurnResult) -> Option<(PlayerKind, Cell, Cell)> {
+fn move_cells(result: &CrownfallTurnResult) -> Option<(CrownfallPlayerKind, CrownfallBoardCell, CrownfallBoardCell)> {
     match result {
-        TurnResult::PieceMove { player, from, to } => Some((*player, *from, *to)),
-        TurnResult::Capture {
+        CrownfallTurnResult::PieceMove { player, from, to } => Some((*player, *from, *to)),
+        CrownfallTurnResult::Capture {
             player,
             last_move_from,
             last_move_to,
             ..
         } => Some((*player, *last_move_from, *last_move_to)),
-        TurnResult::Victory { .. } => None,
+        CrownfallTurnResult::Victory { .. } => None,
     }
 }
 
-fn is_players_turn(play_state: &PlayState, is_white: bool) -> bool {
-    (play_state.player() == PlayerKind::White && is_white)
-        || (play_state.player() == PlayerKind::Black && !is_white)
+fn is_players_turn(play_state: &CrownfallPlayState, is_white: bool) -> bool {
+    (play_state.player() == CrownfallPlayerKind::White && is_white)
+        || (play_state.player() == CrownfallPlayerKind::Black && !is_white)
 }
 
 impl Scene<SceneResult, SceneName> for GameScene {
@@ -130,7 +130,7 @@ impl Scene<SceneResult, SceneName> for GameScene {
                         continue;
                     }
                     if let Some(cell) = cell {
-                        let xy = self.board_renderer.pos_for(Cell::new_index(i));
+                        let xy = self.board_renderer.pos_for(CrownfallBoardCell::new_index(i));
                         let image = self.piece_renderer.image_for_piece(cell);
                         graphics.draw_indexed_image(xy, image);
                     }
@@ -197,7 +197,7 @@ impl Scene<SceneResult, SceneName> for GameScene {
         let GameClientState::Playing(web_game, is_white) = &self.state else {
             return;
         };
-        let GameState::Playing(play_state) = &web_game.game.state else {
+        let CrownfallGameState::Playing(play_state) = &web_game.game.state else {
             return;
         };
         if !is_players_turn(play_state, *is_white) {
@@ -241,14 +241,14 @@ impl Scene<SceneResult, SceneName> for GameScene {
         let GameClientState::Playing(web_game, _) = &mut self.state else {
             return;
         };
-        let GameState::Playing(play_state) = &web_game.game.state else {
+        let CrownfallGameState::Playing(play_state) = &web_game.game.state else {
             return;
         };
         let player = play_state.player();
         if target != drag.origin && drag.valid_destinations.contains(&target) {
             match send(Packet::PerformActionRequest(
                 web_game.id.clone(),
-                PlayerAction::Move {
+                CrownfallPlayerAction::Move {
                     player,
                     from: drag.origin,
                     to: target,
@@ -337,7 +337,7 @@ fn draw_status(
     web_game: &WebGame,
     is_white: bool,
     graphics: &mut Graphics,
-    _last_move: &Option<TurnResult>,
+    _last_move: &Option<CrownfallTurnResult>,
 ) {
     let pos = coord!(260, 16);
     graphics.draw_text(
@@ -382,19 +382,19 @@ fn draw_status(
     // }
 }
 
-fn state_to_text(state: &GameState, white_name: &str, black_name: &str) -> String {
+fn state_to_text(state: &CrownfallGameState, white_name: &str, black_name: &str) -> String {
     match state {
-        GameState::Playing(state) => match state {
-            PlayState::WaitingForInput { player } => {
-                let name = if player == &PlayerKind::White {
+        CrownfallGameState::Playing(state) => match state {
+            CrownfallPlayState::WaitingForInput { player } => {
+                let name = if player == &CrownfallPlayerKind::White {
                     white_name
                 } else {
                     black_name
                 };
                 format!("Waiting for {name}")
             }
-            PlayState::MustRemoveKnight { player, options } => {
-                let name = if player == &PlayerKind::White {
+            CrownfallPlayState::MustRemoveKnight { player, options } => {
+                let name = if player == &CrownfallPlayerKind::White {
                     white_name
                 } else {
                     black_name
@@ -406,14 +406,14 @@ fn state_to_text(state: &GameState, white_name: &str, black_name: &str) -> Strin
                 )
             }
         },
-        GameState::Victory(player) => {
-            let name = if player == &PlayerKind::White {
+        CrownfallGameState::Victory(player) => {
+            let name = if player == &CrownfallPlayerKind::White {
                 white_name
             } else {
                 black_name
             };
             format!("Victory: {name}")
         }
-        GameState::Draw(reason) => format!("Draw ({})", reason.description()),
+        CrownfallGameState::Draw(reason) => format!("Draw ({})", reason.description()),
     }
 }
