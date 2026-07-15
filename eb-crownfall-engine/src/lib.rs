@@ -64,27 +64,38 @@ impl CrownfallBoardVariant {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CrownfallRules {
     pub board: CrownfallBoardVariant,
-    /// Variant 4: if any capturing move exists for the player to move,
-    /// only capturing moves are legal this turn.
-    pub mandatory_capture: bool,
-    /// Variant 5: a move that simultaneously (a) walks the mover into a
-    /// pre-existing enemy pincer and (b) completes the mover's own pincer
-    /// resolves both captures, instead of (a) pre-empting (b).
-    pub all_captures_processed: bool,
-    /// Variant 6: Knights move diagonally forward-only and capture
-    /// orthogonally forward/left/right, instead of the standard
-    /// orthogonal-forward-only movement with a diagonal-forward capture
-    /// arc.
-    pub knights_move_diagonally: bool,
+    pub ruleset: CrownfallRuleset,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum CrownfallRuleset {
+    Archers,
+    Custom {
+        /// Variant 4: if any capturing move exists for the player to move,
+        /// only capturing moves are legal this turn.
+        mandatory_capture: bool,
+        /// Variant 5: a move that simultaneously (a) walks the mover into a
+        /// pre-existing enemy pincer and (b) completes the mover's own pincer
+        /// resolves both captures, instead of (a) pre-empting (b).
+        all_captures_processed: bool,
+        /// Variant 6: Knights move diagonally forward-only and capture
+        /// orthogonally forward/left/right, instead of the standard
+        /// orthogonal-forward-only movement with a diagonal-forward capture
+        /// arc.
+        knights_move_diagonally: bool,
+}
 }
 
 impl CrownfallRules {
     pub const fn standard() -> CrownfallRules {
         CrownfallRules {
             board: CrownfallBoardVariant::Normal,
-            mandatory_capture: false,
-            all_captures_processed: false,
-            knights_move_diagonally: false,
+            ruleset: CrownfallRuleset::Custom {
+                mandatory_capture: false,
+                all_captures_processed: false,
+                knights_move_diagonally: false,
+            }
         }
     }
 
@@ -102,23 +113,56 @@ impl CrownfallRules {
         }
     }
 
+    pub const fn standard_archers() -> CrownfallRules {
+        CrownfallRules {
+            board: CrownfallBoardVariant::Normal,
+            ruleset: CrownfallRuleset::Archers,
+        }
+    }
+
+    pub const fn mini_archers() -> CrownfallRules {
+        CrownfallRules {
+            board: CrownfallBoardVariant::Mini,
+            ruleset: CrownfallRuleset::Archers,
+        }
+    }
+
+    pub const fn grand_archers() -> CrownfallRules {
+        CrownfallRules {
+            board: CrownfallBoardVariant::Grand,
+            ruleset: CrownfallRuleset::Archers,
+        }
+    }
+
     pub const fn standard_mandatory_capture() -> CrownfallRules {
         CrownfallRules {
-            mandatory_capture: true,
+            ruleset: CrownfallRuleset::Custom {
+                mandatory_capture: true,
+                all_captures_processed: false,
+                knights_move_diagonally: false,
+            },
             ..CrownfallRules::standard()
         }
     }
 
     pub const fn standard_all_captures_processed() -> CrownfallRules {
         CrownfallRules {
-            all_captures_processed: true,
+            ruleset: CrownfallRuleset::Custom {
+                mandatory_capture: false,
+                all_captures_processed: true,
+                knights_move_diagonally: false,
+            },
             ..CrownfallRules::standard()
         }
     }
 
     pub const fn standard_diagonal_knights() -> CrownfallRules {
         CrownfallRules {
-            knights_move_diagonally: true,
+            ruleset: CrownfallRuleset::Custom {
+                mandatory_capture: false,
+                all_captures_processed: false,
+                knights_move_diagonally: true,
+            },
             ..CrownfallRules::standard()
         }
     }

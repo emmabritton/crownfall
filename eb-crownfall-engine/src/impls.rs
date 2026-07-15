@@ -1,9 +1,11 @@
+use alloc::sync::Arc;
 use crate::errors::CrownfallError;
 use crate::hash::position_hash;
 use crate::tables;
 use crate::*;
 use alloc::vec;
 use alloc::vec::Vec;
+use crate::CrownfallPieceKind::Archer;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CaptureKind {
@@ -170,6 +172,71 @@ pub fn standard_layout() -> CrownfallBoardState {
     }
 }
 
+pub fn standard_archers_layout() -> CrownfallBoardState {
+    use CrownfallPieceKind::{Crown, Knight, Spy};
+    use CrownfallPlayerKind::{Black, White};
+    CrownfallBoardState::Normal {
+        cells: [
+            // Row A (y=0)
+            p(Archer, Black),
+            p(Archer, Black),
+            p(Archer, Black),
+            p(Crown, Black),
+            p(Archer, Black),
+            p(Archer, Black),
+            p(Archer, Black),
+            // Row B (y=1)
+            None,
+            None,
+            p(Archer, Black),
+            p(Spy, Black),
+            p(Archer, Black),
+            None,
+            None,
+            // Row C (y=2)
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            // Row D (y=3)
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            // Row E (y=4)
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            // Row F (y=5)
+            None,
+            None,
+            p(Archer, White),
+            p(Spy, White),
+            p(Archer, White),
+            None,
+            None,
+            // Row G (y=6)
+            p(Archer, White),
+            p(Archer, White),
+            p(Archer, White),
+            p(Crown, White),
+            p(Archer, White),
+            p(Archer, White),
+            p(Archer, White),
+        ],
+    }
+}
+
 /// The Mini (5x5) starting layout: 4 Knights and 1 Spy in a single row in
 /// front of each Crown, flanked by two more Spies.
 pub fn mini_layout() -> CrownfallBoardState {
@@ -207,6 +274,45 @@ pub fn mini_layout() -> CrownfallBoardState {
             p(Crown, White),
             p(Spy, White),
             None,
+        ],
+    }
+}
+
+pub fn mini_archers_layout() -> CrownfallBoardState {
+    use CrownfallPieceKind::{Crown, Knight, Spy};
+    use CrownfallPlayerKind::{Black, White};
+    CrownfallBoardState::Mini {
+        cells: [
+            // Row A (y=0)
+            p(Archer, Black),
+            p(Archer, Black),
+            p(Crown, Black),
+            p(Archer, Black),
+            p(Archer, Black),
+            // Row B (y=1)
+            None,
+            None,
+            p(Spy, Black),
+            None,
+            None,
+            // Row C (y=2)
+            None,
+            None,
+            None,
+            None,
+            None,
+            // Row D (y=3)
+            None,
+            None,
+            p(Spy, White),
+            None,
+            None,
+            // Row E (y=4)
+            p(Archer, White),
+            p(Archer, White),
+            p(Crown, White),
+            p(Archer, White),
+            p(Archer, White),
         ],
     }
 }
@@ -312,14 +418,117 @@ pub fn grand_layout() -> CrownfallBoardState {
     }
 }
 
+pub fn grand_archers_layout() -> CrownfallBoardState {
+    use CrownfallPieceKind::{Archer, Crown, Knight, Spy};
+    use CrownfallPlayerKind::{Black, White};
+    CrownfallBoardState::Grand {
+        cells: [
+            // Row A (y=0)
+            p(Archer, Black),
+            p(Archer, Black),
+            p(Archer, Black),
+            p(Archer, Black),
+            p(Crown, Black),
+            p(Archer, Black),
+            p(Archer, Black),
+            p(Archer, Black),
+            p(Archer, Black),
+            // Row B (y=1)
+            None,
+            None,
+            p(Archer, Black),
+            p(Archer, Black),
+            p(Spy, Black),
+            p(Archer, Black),
+            p(Archer, Black),
+            None,
+            None,
+            // Row C (y=2)
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            // Row D (y=3)
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            // Row E (y=4)
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            // Row F (y=5)
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            // Row G (y=6)
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            // Row H (y=7)
+            None,
+            None,
+            p(Archer, White),
+            p(Archer, White),
+            p(Spy, White),
+            p(Archer, White),
+            p(Archer, White),
+            None,
+            None,
+            // Row I (y=8)
+            p(Archer, White),
+            p(Archer, White),
+            p(Archer, White),
+            p(Archer, White),
+            p(Crown, White),
+            p(Archer, White),
+            p(Archer, White),
+            p(Archer, White),
+            p(Archer, White),
+        ],
+    }
+}
+
 impl CrownfallGame {
     /// Builds a fresh game for the given ruleset: the matching starting
     /// board layout, White to move, empty history.
     pub fn new(rules: CrownfallRules) -> CrownfallGame {
-        let board = match rules.board {
-            CrownfallBoardVariant::Mini => mini_layout(),
-            CrownfallBoardVariant::Normal => standard_layout(),
-            CrownfallBoardVariant::Grand => grand_layout(),
+        let is_archers = matches!(rules.ruleset, CrownfallRuleset::Archers);
+        let board = match (rules.board, is_archers) {
+            (CrownfallBoardVariant::Mini, false) => mini_layout(),
+            (CrownfallBoardVariant::Normal, false) => standard_layout(),
+            (CrownfallBoardVariant::Grand, false) => grand_layout(),
+            (CrownfallBoardVariant::Mini, true) => mini_archers_layout(),
+            (CrownfallBoardVariant::Normal, true) => standard_archers_layout(),
+            (CrownfallBoardVariant::Grand, true) => grand_archers_layout(),
         };
         let history = vec![position_hash(&board, CrownfallPlayerKind::White)];
         CrownfallGame {
@@ -371,10 +580,15 @@ impl CrownfallBoardState {
         cell: CrownfallBoardCell,
         rules: CrownfallRules,
     ) -> &'static [u8] {
+        let knights_move_diagonally_enabled = if let CrownfallRuleset::Custom { knights_move_diagonally,..} = rules.ruleset {
+            knights_move_diagonally
+        } else {
+            false
+        };
         let variant = self.variant();
         match self.cells()[cell.to_index()] {
             Some(piece) if piece.kind == CrownfallPieceKind::Knight => {
-                if rules.knights_move_diagonally {
+                if knights_move_diagonally_enabled {
                     tables::knight_diagonal_moves(variant, piece.player, cell.to_index())
                 } else {
                     tables::knight_moves(variant, piece.player, cell.to_index())
@@ -410,7 +624,12 @@ impl CrownfallBoardState {
         index: usize,
         rules: CrownfallRules,
     ) -> &'static [u8] {
-        if rules.knights_move_diagonally {
+        let knights_move_diagonally_enabled = if let CrownfallRuleset::Custom { knights_move_diagonally,..} = rules.ruleset {
+            knights_move_diagonally
+        } else {
+            false
+        };
+        if knights_move_diagonally_enabled {
             tables::knight_moves(self.variant(), player, index)
         } else {
             tables::knight_arcs(self.variant(), player, index)
@@ -956,7 +1175,12 @@ impl CrownfallGame {
             return Err(CrownfallError::InvalidDestination(player, from, to));
         }
 
-        if self.rules.mandatory_capture {
+        let must_capture_rule_enabled = if let CrownfallRuleset::Custom { mandatory_capture,..} = self.rules.ruleset {
+            mandatory_capture
+        } else {
+            false
+        };
+        if must_capture_rule_enabled {
             let mut scratch = self.board;
             scratch.cells_mut()[from_index] = None;
             scratch.cells_mut()[to_index] = Some(piece);
@@ -993,7 +1217,12 @@ impl CrownfallGame {
             }));
         }
 
-        if self.rules.all_captures_processed {
+        let all_captures_processed_enabled = if let CrownfallRuleset::Custom { all_captures_processed,..} = self.rules.ruleset {
+            all_captures_processed
+        } else {
+            false
+        };
+        if all_captures_processed_enabled {
             self.apply_move_all_captures_processed(player, from, to, piece, log_moves)
         } else {
             self.apply_move_sequential(player, from, to, piece, log_moves)

@@ -48,7 +48,7 @@ impl AiGameScene {
         difficulty: CrownfallDifficulty,
         personality: CrownfallPersonality,
     ) -> Box<AiGameScene> {
-        let game = CrownfallGame::new(CrownfallRules::grand());
+        let game = CrownfallGame::new(CrownfallRules::standard());
         Box::new(AiGameScene {
             board_renderer: BoardRenderer::new(BOARD_POS, game.board.board_length()),
             game,

@@ -7,7 +7,7 @@
 //! undo is a couple of stores plus a `Vec::truncate`. This matters on the
 //! GBA's ARM7TDMI, where a per-node heap clone of the history would dwarf
 //! the actual search work.
-use crate::tables;
+use crate::{tables, CrownfallRuleset};
 use crate::{
     CrownfallBoardCell, CrownfallBoardState, CrownfallGame, CrownfallGameState, CrownfallPieceKind,
     CrownfallPlayerAction, CrownfallPlayerKind, CrownfallRules,
@@ -259,8 +259,13 @@ fn collect_moves(
         moves: [(0, 0); MAX_MOVES],
         len: 0,
     };
+    let must_capture_rule_enabled = if let CrownfallRuleset::Custom { mandatory_capture,..} = rules.ruleset {
+        mandatory_capture
+    } else {
+        false
+    };
     let cell_count = tables::cell_count(board.variant());
-    let must_capture = rules.mandatory_capture && board.has_available_capture(player, rules);
+    let must_capture = must_capture_rule_enabled && board.has_available_capture(player, rules);
     for index in 0..cell_count {
         if let Some(piece) = board.cells()[index]
             && piece.player == player
