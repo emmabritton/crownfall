@@ -19,11 +19,11 @@ Crownfall is a two-player abstract strategy game played on a 7×7 board. Each pl
 |       | 1  | 2  | 3  | 4  | 5  | 6  | 7  |
 |-------|----|----|----|----|----|----|----|
 | **A** |    |    | 🗡️️ | 👑 | 🗡️️ |    |    |
-| **B** | 🛡️ |    | 🛡️ | 🗡️ | 🛡️ |    | 🛡️ |
-| **C** |    | 🛡️ |    |    |    | 🛡️ |    |
+| **B** | 🛡️ | 🛡 | 🛡️ | 🗡️ | 🛡️ | 🛡 | 🛡️ |
+| **C** |    | ️   |    |    |    | ️   |    |
 | **D** |    |    |    |    |    |    |    |
-| **E** |    | 🛡️ |    |    |    | 🛡️ |    |
-| **F** | 🛡️ |    | 🛡️ | 🗡️️ | 🛡️ |    | 🛡️ |
+| **E** |    | ️   |    |    |    |    |    |
+| **F** | 🛡️ | 🛡 | 🛡️ | 🗡️️ | 🛡️ | 🛡 | 🛡️ |
 | **G** |    |    | 🗡️️ | 👑 | 🗡️️ |    |    |
 
 Rows A–C belong to one player; rows E–G belong to the other. Each side's 6 Knights are split across two rows (4 nearest their own Crown, 2 one row further forward, offset into the gaps) rather than one solid line — this staggering keeps the two sides' Knights from meeting as a single contiguous wall, which would otherwise put every Knight in a mutual pincer simultaneously on first contact.
