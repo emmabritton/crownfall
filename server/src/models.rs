@@ -3,7 +3,7 @@ use eb_crownfall_engine::{
     CrownfallGame, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult,
 };
 use networking::models::{PendingGame, WebGame};
-use networking::packet::{GameId, PendingGameState, PerformActionState, Username};
+use networking::packet::{PendingGameState, PerformActionState, Username};
 use networking::server::ClientId;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -72,34 +72,34 @@ impl AppState {
     }
 
     pub fn pending_list(&self) -> Vec<PendingGame> {
-        self.pending
-            .iter()
-            .map(|(id, pending)| PendingGame {
-                id: id.clone(),
-                white_player_name: self
-                    .names
-                    .get(&pending.white_player)
-                    .cloned()
-                    .unwrap_or_default(),
-                created: pending.created,
-            })
-            .collect()
+        self.pending.iter().map(|(_,s)| s.game.clone()).collect()
     }
 
-    pub fn create_game(&mut self, client_id: ClientId) -> Option<GameId> {
+    pub fn create_game(&mut self, client_id: ClientId) -> Option<PendingGame> {
         if self.game_count() >= self.max_games {
             return None;
         }
 
-        let id = Uuid::new_v4().to_string();
+        let game_id = Uuid::new_v4().to_string();
+        let game = PendingGame {
+            id: game_id.clone(),
+            white_player_name: self
+                .names
+                .get(&client_id)
+                .cloned()
+                .unwrap_or_default(),
+            created: Utc::now(),
+            rules: Default::default(),
+        };
+        let server_game = ServerPendingGame {
+            white_player: client_id,
+            game: game.clone(),
+        };
         self.pending.insert(
-            id.clone(),
-            ServerPendingGame {
-                white_player: client_id,
-                created: Utc::now(),
-            },
+            game_id,
+            server_game,
         );
-        Some(id)
+        Some(game)
     }
 
     pub fn join_game(&mut self, id: &str, client_id: ClientId) -> Option<ServerActiveGame> {
@@ -210,5 +210,5 @@ pub struct ServerActiveGame {
 #[derive(Clone, Debug)]
 pub struct ServerPendingGame {
     pub white_player: ClientId,
-    pub created: chrono::DateTime<Utc>,
+    pub game: PendingGame
 }

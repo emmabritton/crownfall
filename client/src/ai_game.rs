@@ -1,16 +1,14 @@
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::{BACKGROUND, SceneName, SceneResult};
 use eb_crownfall_engine::ai::{CrownfallDifficulty, CrownfallPersonality, best_move};
-use eb_crownfall_engine::{
-    CrownfallBoardCell, CrownfallGame, CrownfallGameState, CrownfallPiece, CrownfallPlayState,
-    CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult,
-};
+use eb_crownfall_engine::{CrownfallBoardCell, CrownfallBoardState, CrownfallBoardVariant, CrownfallGame, CrownfallGameState, CrownfallPiece, CrownfallPlayState, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallRules, CrownfallTurnResult};
 use pixels_graphics_lib::MouseData;
 use pixels_graphics_lib::buffer_graphics_lib::Graphics;
 use pixels_graphics_lib::prelude::*;
 use pixels_graphics_lib::scenes::SceneUpdateResult::Nothing;
+use eb_crownfall_engine::impls::grand_layout;
 
-const BOARD_POS: Coord = Coord::new(16, 16);
+const BOARD_POS: Coord = Coord::new(6,6);
 const HUMAN: CrownfallPlayerKind = CrownfallPlayerKind::White;
 const AI: CrownfallPlayerKind = CrownfallPlayerKind::Black;
 /// Small pause before the AI "moves" so its turn doesn't feel instantaneous.
@@ -50,15 +48,16 @@ impl AiGameScene {
         difficulty: CrownfallDifficulty,
         personality: CrownfallPersonality,
     ) -> Box<AiGameScene> {
+        let game = CrownfallGame::new(CrownfallRules::grand());
         Box::new(AiGameScene {
-            game: CrownfallGame::default(),
+            board_renderer: BoardRenderer::new(BOARD_POS, game.board.board_length()),
+            game,
             difficulty,
             personality,
             drag: None,
             ai_timer: None,
             animation: None,
             piece_renderer: PieceRenderer::new(),
-            board_renderer: BoardRenderer::new(BOARD_POS),
             highlight_image: IndexedImage::from_file_contents(include_bytes!(
                 "../resources/cell_valid.ici"
             ))
@@ -71,7 +70,7 @@ impl AiGameScene {
     fn animate_or_apply(&mut self, next: CrownfallGame, turn_result: Option<CrownfallTurnResult>) {
         let move_cells = turn_result.as_ref().and_then(move_cells);
         if let Some((from, to)) = move_cells
-            && let Some(piece) = self.game.board.cells[from.index]
+            && let Some(piece) = self.game.board.cells()[from.index]
         {
             self.animation = Some(MoveAnimation {
                 piece,
@@ -112,7 +111,7 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
     fn render(&self, graphics: &mut Graphics, _: &MouseData, _: &FxHashSet<KeyCode>) {
         graphics.clear(BACKGROUND);
         self.board_renderer.render(graphics);
-        for (i, cell) in self.game.board.cells.iter().enumerate() {
+        for (i, cell) in self.game.board.cells().iter().enumerate() {
             if self.drag.as_ref().is_some_and(|d| d.origin.index == i) {
                 continue;
             }
@@ -122,15 +121,15 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
             if let Some(cell) = cell {
                 let xy = self
                     .board_renderer
-                    .pos_for(CrownfallBoardCell::new_index(i));
+                    .pos_for(CrownfallBoardCell::new_index(i), self.game.board.variant());
                 let image = self.piece_renderer.image_for_piece(cell);
                 graphics.draw_indexed_image(xy, image);
             }
         }
         if let Some(anim) = &self.animation {
             let t = (anim.elapsed / MOVE_ANIMATION_DURATION).clamp(0.0, 1.0);
-            let from = self.board_renderer.pos_for(anim.from);
-            let to = self.board_renderer.pos_for(anim.to);
+            let from = self.board_renderer.pos_for(anim.from, self.game.board.variant());
+            let to = self.board_renderer.pos_for(anim.to, self.game.board.variant());
             let xy = from + (to - from) * t;
             let image = self.piece_renderer.image_for_piece(&anim.piece);
             graphics.draw_indexed_image(xy, image);
@@ -138,10 +137,10 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
         draw_status(&self.game, graphics);
         if let Some(drag) = &self.drag {
             for destination in &drag.valid_destinations {
-                let pos = self.board_renderer.pos_for(*destination);
+                let pos = self.board_renderer.pos_for(*destination, self.game.board.variant());
                 graphics.draw_indexed_image(pos, &self.highlight_image);
             }
-            if let Some(piece) = self.game.board.cells[drag.origin.index] {
+            if let Some(piece) = self.game.board.cells()[drag.origin.index] {
                 let image = self.piece_renderer.image_for_piece(&piece);
                 let half_cell = (CELL_SIZE / 2) as isize;
                 let xy = drag.pointer - Coord::new(half_cell, half_cell);
@@ -162,15 +161,18 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
         if !is_humans_turn(&self.game) {
             return;
         }
-        let Some(cell) = self.board_renderer.cell_at(mouse.xy) else {
+        let Some(cell) = self.board_renderer.cell_at(mouse.xy, self.game.board.variant()) else {
             return;
         };
-        if let Some(piece) = self.game.board.cells[cell.index]
+        if let Some(piece) = self.game.board.cells()[cell.index]
             && piece.player == HUMAN
         {
             self.drag = Some(DragState {
                 origin: cell,
-                valid_destinations: self.game.board.get_valid_destinations_for(cell),
+                valid_destinations: self
+                    .game
+                    .board
+                    .get_valid_destinations_for(cell, self.game.rules),
                 pointer: mouse.xy,
             });
         }
@@ -194,7 +196,7 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
         let Some(drag) = self.drag.take() else {
             return;
         };
-        let Some(target) = self.board_renderer.cell_at(mouse.xy) else {
+        let Some(target) = self.board_renderer.cell_at(mouse.xy, self.game.board.variant()) else {
             return;
         };
         if target == drag.origin || !drag.valid_destinations.contains(&target) {
@@ -251,7 +253,12 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
 }
 
 fn draw_status(game: &CrownfallGame, graphics: &mut Graphics) {
-    let pos = coord!(260, 16);
+    let x = match game.board.variant() {
+        CrownfallBoardVariant::Mini => 172,
+        CrownfallBoardVariant::Normal => 236,
+        CrownfallBoardVariant::Grand => 300,
+    };
+    let pos = coord!(x, 6);
     graphics.draw_text(
         "White: You",
         TextPos::px(pos),
@@ -270,13 +277,13 @@ fn draw_status(game: &CrownfallGame, graphics: &mut Graphics) {
     );
 
     graphics.draw_text(
-        &state_to_text(&game.state),
+        &state_to_text(game.board.variant(),&game.state),
         TextPos::px(pos + (0, 60)),
         (WHITE, PixelFont::Standard6x7, WrappingStrategy::AtCol(18)),
     );
 }
 
-fn state_to_text(state: &CrownfallGameState) -> String {
+fn state_to_text(variant:CrownfallBoardVariant,state: &CrownfallGameState) -> String {
     match state {
         CrownfallGameState::Playing(state) => match state {
             CrownfallPlayState::WaitingForInput { player } => {
@@ -295,8 +302,8 @@ fn state_to_text(state: &CrownfallGameState) -> String {
                 };
                 format!(
                     "{name} must remove knight at either {:?} or {:?}",
-                    options.0.to_coord(),
-                    options.1.to_coord()
+                    options.0.to_coord(variant),
+                    options.1.to_coord(variant)
                 )
             }
         },

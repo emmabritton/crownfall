@@ -1,9 +1,10 @@
+use std::env::var;
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::net::{poll, send};
 use crate::{BACKGROUND, HEIGHT, SceneName, SceneResult, WIDTH, username};
 use eb_crownfall_engine::{
-    CrownfallBoardCell, CrownfallGameState, CrownfallPiece, CrownfallPlayState,
-    CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult,
+    CrownfallBoardCell, CrownfallBoardVariant, CrownfallGameState, CrownfallPiece,
+    CrownfallPlayState, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult,
 };
 use networking::models::WebGame;
 use networking::packet::{GameId, NetGameState, Packet, PerformActionState};
@@ -12,7 +13,7 @@ use pixels_graphics_lib::buffer_graphics_lib::Graphics;
 use pixels_graphics_lib::prelude::*;
 use pixels_graphics_lib::scenes::SceneUpdateResult::Nothing;
 
-const BOARD_POS: Coord = Coord::new(16, 16);
+const BOARD_POS: Coord = Coord::new(12, 12);
 const MOVE_ANIMATION_DURATION: f64 = 0.25;
 
 #[allow(clippy::large_enum_variant)]
@@ -51,12 +52,12 @@ pub struct GameScene {
 }
 
 impl GameScene {
-    pub fn new(id: String) -> Box<GameScene> {
+    pub fn new(id: String, board_length: usize) -> Box<GameScene> {
         Box::new(GameScene {
             state: GameClientState::PreLoad(id),
             last_move: None,
             piece_renderer: PieceRenderer::new(),
-            board_renderer: BoardRenderer::new(BOARD_POS),
+            board_renderer: BoardRenderer::new(BOARD_POS, board_length),
             drag: None,
             animation: None,
             highlight_image: IndexedImage::from_file_contents(include_bytes!(
@@ -86,7 +87,7 @@ impl GameScene {
         });
         if let Some((_, from, to)) = moved_by_other
             && let GameClientState::Playing(current, _) = &self.state
-            && let Some(piece) = current.game.board.cells[from.index]
+            && let Some(piece) = current.game.board.cells()[from.index]
         {
             self.animation = Some(MoveAnimation {
                 piece,
@@ -130,7 +131,7 @@ impl Scene<SceneResult, SceneName> for GameScene {
         match &self.state {
             GameClientState::Playing(web_game, is_white) => {
                 self.board_renderer.render(graphics);
-                for (i, cell) in web_game.game.board.cells.iter().enumerate() {
+                for (i, cell) in web_game.game.board.cells().iter().enumerate() {
                     if self.drag.as_ref().is_some_and(|d| d.origin.index == i) {
                         continue;
                     }
@@ -140,15 +141,15 @@ impl Scene<SceneResult, SceneName> for GameScene {
                     if let Some(cell) = cell {
                         let xy = self
                             .board_renderer
-                            .pos_for(CrownfallBoardCell::new_index(i));
+                            .pos_for(CrownfallBoardCell::new_index(i), web_game.game.board.variant());
                         let image = self.piece_renderer.image_for_piece(cell);
                         graphics.draw_indexed_image(xy, image);
                     }
                 }
                 if let Some(anim) = &self.animation {
                     let t = (anim.elapsed / MOVE_ANIMATION_DURATION).clamp(0.0, 1.0);
-                    let from = self.board_renderer.pos_for(anim.from);
-                    let to = self.board_renderer.pos_for(anim.to);
+                    let from = self.board_renderer.pos_for(anim.from, web_game.game.board.variant());
+                    let to = self.board_renderer.pos_for(anim.to, web_game.game.board.variant());
                     let xy = from + (to - from) * t;
                     let image = self.piece_renderer.image_for_piece(&anim.piece);
                     graphics.draw_indexed_image(xy, image);
@@ -156,10 +157,10 @@ impl Scene<SceneResult, SceneName> for GameScene {
                 draw_status(web_game, *is_white, graphics, &self.last_move);
                 if let Some(drag) = &self.drag {
                     for destination in &drag.valid_destinations {
-                        let pos = self.board_renderer.pos_for(*destination);
+                        let pos = self.board_renderer.pos_for(*destination, web_game.game.board.variant());
                         graphics.draw_indexed_image(pos, &self.highlight_image);
                     }
-                    if let Some(piece) = web_game.game.board.cells[drag.origin.index] {
+                    if let Some(piece) = web_game.game.board.cells()[drag.origin.index] {
                         let image = self.piece_renderer.image_for_piece(&piece);
                         let half_cell = (CELL_SIZE / 2) as isize;
                         let xy = drag.pointer - Coord::new(half_cell, half_cell);
@@ -213,15 +214,18 @@ impl Scene<SceneResult, SceneName> for GameScene {
         if !is_players_turn(play_state, *is_white) {
             return;
         }
-        let Some(cell) = self.board_renderer.cell_at(mouse.xy) else {
+        let Some(cell) = self.board_renderer.cell_at(mouse.xy, web_game.game.board.variant()) else {
             return;
         };
-        if let Some(piece) = web_game.game.board.cells[cell.index]
+        if let Some(piece) = web_game.game.board.cells()[cell.index]
             && piece.player == play_state.player()
         {
             self.drag = Some(DragState {
                 origin: cell,
-                valid_destinations: web_game.game.board.get_valid_destinations_for(cell),
+                valid_destinations: web_game
+                    .game
+                    .board
+                    .get_valid_destinations_for(cell, web_game.game.rules),
                 pointer: mouse.xy,
             });
         }
@@ -245,10 +249,10 @@ impl Scene<SceneResult, SceneName> for GameScene {
         let Some(drag) = self.drag.take() else {
             return;
         };
-        let Some(target) = self.board_renderer.cell_at(mouse.xy) else {
+        let GameClientState::Playing(web_game, _) = &mut self.state else {
             return;
         };
-        let GameClientState::Playing(web_game, _) = &mut self.state else {
+        let Some(target) = self.board_renderer.cell_at(mouse.xy, web_game.game.board.variant()) else {
             return;
         };
         let CrownfallGameState::Playing(play_state) = &web_game.game.state else {
@@ -267,8 +271,8 @@ impl Scene<SceneResult, SceneName> for GameScene {
                 // Optimistically apply the move locally so the piece doesn't snap
                 // back to its origin while waiting for the server's confirmation.
                 Ok(()) => {
-                    web_game.game.board.cells[target.index] =
-                        web_game.game.board.cells[drag.origin.index].take();
+                    let moved = web_game.game.board.cells_mut()[drag.origin.index].take();
+                    web_game.game.board.cells_mut()[target.index] = moved;
                 }
                 Err(e) => self.state = GameClientState::Error(e.to_string()),
             }
@@ -349,7 +353,12 @@ fn draw_status(
     graphics: &mut Graphics,
     _last_move: &Option<CrownfallTurnResult>,
 ) {
-    let pos = coord!(260, 16);
+    let x = match web_game.game.board.variant() {
+        CrownfallBoardVariant::Mini => 172,
+        CrownfallBoardVariant::Normal => 236,
+        CrownfallBoardVariant::Grand => 300,
+    };
+    let pos = coord!(x, 6);
     graphics.draw_text(
         &format!(
             "White: {} {}",
@@ -376,6 +385,7 @@ fn draw_status(
 
     graphics.draw_text(
         &state_to_text(
+            web_game.game.board.variant(),
             &web_game.game.state,
             &web_game.white_player_name,
             &web_game.black_player_name,
@@ -392,7 +402,7 @@ fn draw_status(
     // }
 }
 
-fn state_to_text(state: &CrownfallGameState, white_name: &str, black_name: &str) -> String {
+fn state_to_text(variant: CrownfallBoardVariant,state: &CrownfallGameState, white_name: &str, black_name: &str) -> String {
     match state {
         CrownfallGameState::Playing(state) => match state {
             CrownfallPlayState::WaitingForInput { player } => {
@@ -411,8 +421,8 @@ fn state_to_text(state: &CrownfallGameState, white_name: &str, black_name: &str)
                 };
                 format!(
                     "{name} must remove knight at either {:?} or {:?}",
-                    options.0.to_coord(),
-                    options.1.to_coord()
+                    options.0.to_coord(variant),
+                    options.1.to_coord(variant)
                 )
             }
         },

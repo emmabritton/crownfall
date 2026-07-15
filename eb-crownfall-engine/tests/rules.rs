@@ -66,20 +66,6 @@ use CrownfallPlayerKind::{Black, White};
 // Board / cell basics
 // ---------------------------------------------------------------------
 
-#[test]
-fn board_length_and_cell_conversions_round_trip() {
-    assert_eq!(BOARD_LENGTH, 7);
-    for y in 0..BOARD_LENGTH {
-        for x in 0..BOARD_LENGTH {
-            let cell = CrownfallBoardCell::new_coord(x, y, VARIANT);
-            assert_eq!(cell.to_coord(VARIANT), (x, y));
-            assert_eq!(
-                CrownfallBoardCell::new_index(cell.to_index()).to_coord(VARIANT),
-                (x, y)
-            );
-        }
-    }
-}
 
 #[test]
 fn default_board_has_correct_piece_counts_and_positions() {

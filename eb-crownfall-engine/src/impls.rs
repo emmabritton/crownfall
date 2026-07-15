@@ -184,11 +184,11 @@ pub fn mini_layout() -> CrownfallBoardState {
             p(Spy, Black),
             None,
             // Row B (y=1)
+            None,
             p(Knight, Black),
             p(Knight, Black),
-            p(Spy, Black),
             p(Knight, Black),
-            p(Knight, Black),
+            None,
             // Row C (y=2)
             None,
             None,
@@ -196,11 +196,11 @@ pub fn mini_layout() -> CrownfallBoardState {
             None,
             None,
             // Row D (y=3)
+            None,
             p(Knight, White),
             p(Knight, White),
-            p(Spy, White),
             p(Knight, White),
-            p(Knight, White),
+            None,
             // Row E (y=4)
             None,
             p(Spy, White),

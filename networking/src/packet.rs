@@ -39,8 +39,8 @@ pub enum Packet {
     PendingListResponse(Vec<PendingGame>),
     //create game
     CreateGameRequest,
-    //get new game id if it worked
-    CreateGameResponse(Option<GameId>),
+    //get pending game if it worked
+    CreateGameResponse(Option<PendingGame>),
     //join a game
     JoinGameRequest(GameId),
     //return true if it worked, false means game invalid/already joined

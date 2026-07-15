@@ -22,7 +22,7 @@ publish = false
 
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
-pixels-graphics-lib = { version = "0.22" , features = ["serde", "window_prefs", "scenes"]}
+pixels-graphics-lib = { version = "0.22.2" , features = ["serde", "window_prefs", "scenes"]}
 serde-big-array = "0.5"
 thiserror = "2.0"
 anyhow = "1.0"

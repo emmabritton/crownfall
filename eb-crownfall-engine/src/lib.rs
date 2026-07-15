@@ -31,13 +31,6 @@ pub enum CrownfallPieceKind {
     Archer,
 }
 
-/// Kept for backwards compatibility with code written against the single
-/// fixed board size this crate used to support - equal to `Normal`'s
-/// length/area. Prefer `CrownfallBoardVariant`/`tables::board_length` for
-/// new code, since board size is now selectable per game.
-pub const BOARD_LENGTH: usize = tables::NORMAL_LENGTH;
-pub const BOARD_SIZE: (usize, usize) = (BOARD_LENGTH, BOARD_LENGTH);
-
 /// The three supported board sizes/piece-set combinations. Each is a
 /// distinct fixed-size array (no heap) rather than a single runtime-sized
 /// board, so no_std/no-alloc consumers (the GBA build) still get plain ROM
@@ -51,6 +44,16 @@ pub enum CrownfallBoardVariant {
     Normal,
     /// 9x9, 8 Knights / 3 Spies / 1 Crown / 2 Archers per side.
     Grand,
+}
+
+impl CrownfallBoardVariant {
+    pub fn length(self) -> usize{
+        match self {
+            CrownfallBoardVariant::Mini => 5,
+            CrownfallBoardVariant::Normal => 7,
+            CrownfallBoardVariant::Grand => 9
+        }
+    }
 }
 
 /// A ruleset: board size (which also implies the starting piece set) plus

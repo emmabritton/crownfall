@@ -1,6 +1,7 @@
-use eb_crownfall_engine::{
-    BOARD_LENGTH, CrownfallBoardCell, CrownfallPiece, CrownfallPieceKind, CrownfallPlayerKind,
-};
+use eb_crownfall_engine::*;
+
+/// The client only offers Standard games for now - no variant-selection UI
+/// exists yet, so every board on screen is always this size.
 use pixels_graphics_lib::prelude::{Coord, Graphics, IndexedImage, coord};
 
 pub const CELL_SIZE: usize = 32;
@@ -12,6 +13,8 @@ pub struct PieceRenderer {
     knight_black: IndexedImage,
     spy_white: IndexedImage,
     spy_black: IndexedImage,
+    arrow_white: IndexedImage,
+    arrow_black: IndexedImage,
 }
 
 impl PieceRenderer {
@@ -47,6 +50,16 @@ impl PieceRenderer {
             ))
             .unwrap()
             .0,
+            arrow_white: IndexedImage::from_file_contents(include_bytes!(
+                "../resources/arrow_white.ici"
+            ))
+                .unwrap()
+                .0,
+            arrow_black: IndexedImage::from_file_contents(include_bytes!(
+                "../resources/arrow_black.ici"
+            ))
+                .unwrap()
+                .0,
         }
     }
 
@@ -64,6 +77,10 @@ impl PieceRenderer {
                 CrownfallPlayerKind::White => &self.spy_white,
                 CrownfallPlayerKind::Black => &self.spy_black,
             },
+            CrownfallPieceKind::Archer => match piece.player {
+                CrownfallPlayerKind::White => &self.arrow_white,
+                CrownfallPlayerKind::Black => &self.arrow_black,
+            },
         }
     }
 }
@@ -73,10 +90,11 @@ pub struct BoardRenderer {
     light: IndexedImage,
     pos: Coord,
     flipped: bool,
+    size: usize,
 }
 
 impl BoardRenderer {
-    pub fn new(pos: Coord) -> Self {
+    pub fn new(pos: Coord, size: usize) -> Self {
         let sqr_dark =
             IndexedImage::from_file_contents(include_bytes!("../resources/sqr_dark.ici"))
                 .unwrap()
@@ -90,6 +108,7 @@ impl BoardRenderer {
             light: sqr_light,
             pos,
             flipped: false,
+            size,
         }
     }
 
@@ -99,15 +118,15 @@ impl BoardRenderer {
 
     fn flip(&self, x: usize, y: usize) -> (usize, usize) {
         if self.flipped {
-            (BOARD_LENGTH - 1 - x, BOARD_LENGTH - 1 - y)
+            (self.size - 1 - x, self.size - 1 - y)
         } else {
             (x, y)
         }
     }
 
     pub fn render(&self, graphics: &mut Graphics) {
-        for y in 0..BOARD_LENGTH {
-            for x in 0..BOARD_LENGTH {
+        for y in 0..self.size {
+            for x in 0..self.size {
                 let cell_pos =
                     self.pos + Coord::new((x * CELL_SIZE) as isize, (y * CELL_SIZE) as isize);
                 let image = if (x + y) % 2 == 0 {
@@ -120,20 +139,20 @@ impl BoardRenderer {
         }
     }
 
-    pub fn cell_at(&self, xy: Coord) -> Option<CrownfallBoardCell> {
+    pub fn cell_at(&self, xy: Coord, variant: CrownfallBoardVariant) -> Option<CrownfallBoardCell> {
         let grid = (xy - self.pos) / CELL_SIZE;
-        if (0..BOARD_LENGTH as isize).contains(&grid.x)
-            && (0..BOARD_LENGTH as isize).contains(&grid.y)
+        if (0..self.size as isize).contains(&grid.x)
+            && (0..self.size as isize).contains(&grid.y)
         {
             let (x, y) = self.flip(grid.x as usize, grid.y as usize);
-            Some(CrownfallBoardCell::new_coord(x, y))
+            Some(CrownfallBoardCell::new_coord(x, y, variant))
         } else {
             None
         }
     }
 
-    pub fn pos_for(&self, cell: CrownfallBoardCell) -> Coord {
-        let (x, y) = cell.to_coord();
+    pub fn pos_for(&self, cell: CrownfallBoardCell, variant: CrownfallBoardVariant) -> Coord {
+        let (x, y) = cell.to_coord(variant);
         let (x, y) = self.flip(x, y);
         self.pos + coord!(x, y) * CELL_SIZE
     }

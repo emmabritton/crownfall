@@ -154,7 +154,7 @@ impl Scene<SceneResult, SceneName> for LoginScene {
                         if let Packet::LoginResponse(packet) = packet {
                             self.prefs.save();
                             return if let Some(game) = packet {
-                                SceneUpdateResult::Push(true, SceneName::RejoinGame(game.id))
+                                SceneUpdateResult::Push(true, SceneName::RejoinGame(game.id, game.game.board.board_length()))
                             } else {
                                 SceneUpdateResult::Push(true, SceneName::GameList)
                             };

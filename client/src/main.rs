@@ -15,7 +15,7 @@ use anyhow::Result;
 use pixels_graphics_lib::prelude::*;
 use std::net::{SocketAddr, ToSocketAddrs};
 
-const WIDTH: usize = 400;
+const WIDTH: usize = 500;
 const HEIGHT: usize = 300;
 
 const BACKGROUND: Color = Color {
@@ -70,7 +70,7 @@ fn main() -> Result<()> {
     };
 
     net::init(addr)?;
-    let window_prefs = WindowPreferences::new("com", "emmabritton", "crownfall", 2)?;
+    let window_prefs = WindowPreferences::new("com", "emmabritton", "crownfall", 3)?;
     let options = Options::default();
     let switcher: SceneSwitcher<SceneResult, SceneName> =
         |style, scene_stack, new_scene| match new_scene {
@@ -78,10 +78,10 @@ fn main() -> Result<()> {
                 scene_stack.clear();
                 scene_stack.push(GameListScene::new(style));
             }
-            SceneName::Game(id) => scene_stack.push(GameScene::new(id)),
-            SceneName::RejoinGame(game_id) => {
+            SceneName::Game(id,board_length) => scene_stack.push(GameScene::new(id,board_length)),
+            SceneName::RejoinGame(game_id, board_length) => {
                 scene_stack.push(GameListScene::new(style));
-                scene_stack.push(GameScene::new(game_id));
+                scene_stack.push(GameScene::new(game_id, board_length));
             }
             SceneName::AiSettings => scene_stack.push(AiSettingsScene::new(style)),
             SceneName::AiGame(difficulty, personality) => {
@@ -112,8 +112,8 @@ fn main() -> Result<()> {
 #[derive(Clone, Debug, PartialEq)]
 enum SceneName {
     GameList,
-    Game(GameId),
-    RejoinGame(GameId),
+    Game(GameId, usize),
+    RejoinGame(GameId, usize),
     AiSettings,
     AiGame(CrownfallDifficulty, CrownfallPersonality),
 }
