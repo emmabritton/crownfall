@@ -1,4 +1,3 @@
-use alloc::sync::Arc;
 use crate::errors::CrownfallError;
 use crate::hash::position_hash;
 use crate::tables;
@@ -101,11 +100,14 @@ fn resolve_continuation(
 
     let key = position_hash(board, next_player);
     history.push(key);
-    // Newest-first with an early exit at the limit: this runs on every applied
-    // move (including AI-search nodes), and near-repetitions cluster at the
-    // recent end of the history.
+    // A position can only recur among the entries since the last capture
+    // (inclusive) - every earlier position had more pieces on the board -
+    // so the scan window is `moves_since_capture + 1` entries, newest first,
+    // not the whole ever-growing history. This runs on every applied move
+    // (including AI-search nodes), where the bounded window is what keeps
+    // deep searches from going quadratic in game length.
     let mut repeats = 0;
-    for &hash in history.iter().rev() {
+    for &hash in history.iter().rev().take(*moves_since_capture as usize + 1) {
         if hash == key {
             repeats += 1;
             if repeats >= REPETITION_LIMIT {
@@ -201,7 +203,7 @@ pub fn standard_layout() -> CrownfallBoardState {
 }
 
 pub fn standard_archers_layout() -> CrownfallBoardState {
-    use CrownfallPieceKind::{Crown, Knight, Spy};
+    use CrownfallPieceKind::{Crown, Spy};
     use CrownfallPlayerKind::{Black, White};
     CrownfallBoardState::Normal {
         cells: [
@@ -265,8 +267,8 @@ pub fn standard_archers_layout() -> CrownfallBoardState {
     }
 }
 
-/// The Mini (5x5) starting layout: 4 Knights and 1 Spy in a single row in
-/// front of each Crown, flanked by two more Spies.
+/// The Mini (5x5) starting layout: 3 Knights in a single row in front of
+/// each Crown, which is flanked by two Spies.
 pub fn mini_layout() -> CrownfallBoardState {
     use CrownfallPieceKind::{Crown, Knight, Spy};
     use CrownfallPlayerKind::{Black, White};
@@ -307,7 +309,7 @@ pub fn mini_layout() -> CrownfallBoardState {
 }
 
 pub fn mini_archers_layout() -> CrownfallBoardState {
-    use CrownfallPieceKind::{Crown, Knight, Spy};
+    use CrownfallPieceKind::{Crown, Spy};
     use CrownfallPlayerKind::{Black, White};
     CrownfallBoardState::Mini {
         cells: [
@@ -447,7 +449,7 @@ pub fn grand_layout() -> CrownfallBoardState {
 }
 
 pub fn grand_archers_layout() -> CrownfallBoardState {
-    use CrownfallPieceKind::{Archer, Crown, Knight, Spy};
+    use CrownfallPieceKind::{Archer, Crown, Spy};
     use CrownfallPlayerKind::{Black, White};
     CrownfallBoardState::Grand {
         cells: [
@@ -689,12 +691,23 @@ impl CrownfallBoardState {
             .contains(&(attacker_cell.to_index() as u8))
     }
 
-    fn piece_count(&self, player: CrownfallPlayerKind, kind: CrownfallPieceKind) -> usize {
-        self.cells()
-            .iter()
-            .flatten()
-            .filter(|piece| piece.player == player && piece.kind == kind)
-            .count()
+    /// Knight and Spy counts for both players in a single board pass -
+    /// `([white_knights, black_knights], [white_spies, black_spies])`. The
+    /// end-of-turn checks (`is_mutual_knight_exhaustion`,
+    /// `is_attrition_defeated`) only need these four numbers, and they run
+    /// after every capture including AI-search nodes, so one pass beats one
+    /// full scan per (player, kind) pair.
+    fn knight_spy_counts(&self) -> ([u16; 2], [u16; 2]) {
+        let mut knights = [0u16; 2];
+        let mut spies = [0u16; 2];
+        for piece in self.cells().iter().flatten() {
+            match piece.kind {
+                CrownfallPieceKind::Knight => knights[piece.player as usize] += 1,
+                CrownfallPieceKind::Spy => spies[piece.player as usize] += 1,
+                _ => {}
+            }
+        }
+        (knights, spies)
     }
 
     /// First pair among `attackers` whose piece kinds form a valid capture,
@@ -1023,17 +1036,22 @@ impl CrownfallBoardState {
     /// spies alone is still a real offensive threat (README "Losing the
     /// Game" - Attrition). Archers don't factor into attrition.
     fn is_attrition_defeated(&self, player: CrownfallPlayerKind) -> bool {
-        self.piece_count(player, CrownfallPieceKind::Knight) <= 1
-            && self.piece_count(player, CrownfallPieceKind::Spy) <= 1
+        let (knights, spies) = self.knight_spy_counts();
+        knights[player as usize] <= 1 && spies[player as usize] <= 1
     }
 
     /// True when a Knight Capture has left one player with a single knight and
     /// the other with none - the exchange that caused it hit both sides at once,
     /// so neither is credited with an attrition win; the game is a draw instead.
     fn is_mutual_knight_exhaustion(&self) -> bool {
-        let white = self.piece_count(CrownfallPlayerKind::White, CrownfallPieceKind::Knight);
-        let black = self.piece_count(CrownfallPlayerKind::Black, CrownfallPieceKind::Knight);
-        matches!((white, black), (0, 1) | (1, 0))
+        let (knights, _) = self.knight_spy_counts();
+        matches!(
+            (
+                knights[CrownfallPlayerKind::White as usize],
+                knights[CrownfallPlayerKind::Black as usize]
+            ),
+            (0, 1) | (1, 0)
+        )
     }
 
     /// True if `player` has at least one legal move this turn that results in
@@ -1046,6 +1064,10 @@ impl CrownfallBoardState {
         player: CrownfallPlayerKind,
         rules: CrownfallRules,
     ) -> bool {
+        // One board copy for the whole scan; each candidate move is played
+        // as two cell writes and undone the same way, instead of re-copying
+        // the entire board per candidate.
+        let mut scratch = *self;
         for (index, cell) in self.cells().iter().enumerate() {
             let Some(piece) = cell else { continue };
             if piece.player != player {
@@ -1057,10 +1079,12 @@ impl CrownfallBoardState {
                     continue;
                 }
                 let to = CrownfallBoardCell::new_index(dest as usize);
-                let mut scratch = *self;
                 scratch.cells_mut()[index] = None;
                 scratch.cells_mut()[dest as usize] = Some(*piece);
-                if scratch.move_captures_something(to, player, piece.kind, rules) {
+                let captures = scratch.move_captures_something(to, player, piece.kind, rules);
+                scratch.cells_mut()[dest as usize] = None;
+                scratch.cells_mut()[index] = Some(*piece);
+                if captures {
                     return true;
                 }
             }

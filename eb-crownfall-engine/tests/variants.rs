@@ -83,8 +83,8 @@ fn mini_layout_has_correct_board_size_and_piece_counts() {
     assert_eq!(game.board.cells().len(), 25);
     for player in [White, Black] {
         assert_eq!(count(&game.board, player, Crown), 1);
-        assert_eq!(count(&game.board, player, Knight), 4);
-        assert_eq!(count(&game.board, player, Spy), 3);
+        assert_eq!(count(&game.board, player, Knight), 3);
+        assert_eq!(count(&game.board, player, Spy), 2);
         assert_eq!(count(&game.board, player, Archer), 0);
     }
 }

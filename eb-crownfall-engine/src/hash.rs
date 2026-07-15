@@ -1,28 +1,59 @@
-//! Position hashing for repetition detection: FNV-1a over a packed one-byte-
-//! per-cell board encoding plus the player to move. Written directly (no
-//! `Hasher` trait, no derived `Hash` walking `Option` discriminants) — this
-//! crate is `no_std` + `alloc` so `std`'s `DefaultHasher` isn't available,
-//! and the hash runs once per applied move, including every node of the AI
-//! search, so it needs to stay one XOR + one multiply per cell.
+//! Position hashing for repetition detection: Zobrist hashing over a
+//! compile-time table of per-(cell, piece) random keys. Only occupied cells
+//! contribute (a plain XOR each), so a typical midgame board costs ~20 loads
+//! and XORs instead of a serial XOR-multiply chain over every cell — there's
+//! no data dependency between cells and no multiply at all, which matters on
+//! the ARM7TDMI. The table is const-evaluated (splitmix64), so it lives in
+//! ROM on the GBA build. The hash runs once per applied move, including
+//! every node of the AI search.
+use crate::tables::GRAND_CELL_COUNT;
 use crate::{CrownfallBoardState, CrownfallPlayerKind};
 
-const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
-const FNV_PRIME: u64 = 0x100000001b3;
+/// 4 piece kinds x 2 players.
+const PIECE_CODES: usize = 8;
+
+/// splitmix64's output mix over a counter — the standard way to generate a
+/// fixed table of statistically-independent 64-bit keys in a const context.
+const fn zobrist_key(index: u64) -> u64 {
+    let mut z = index.wrapping_add(1).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+const fn build_keys() -> [[u64; PIECE_CODES]; GRAND_CELL_COUNT] {
+    let mut out = [[0u64; PIECE_CODES]; GRAND_CELL_COUNT];
+    let mut cell = 0;
+    while cell < GRAND_CELL_COUNT {
+        let mut code = 0;
+        while code < PIECE_CODES {
+            out[cell][code] = zobrist_key((cell * PIECE_CODES + code) as u64);
+            code += 1;
+        }
+        cell += 1;
+    }
+    out
+}
+
+/// One key per (cell, piece kind, piece owner). Sized for the largest board;
+/// smaller boards use the leading entries. Hashes are only ever compared
+/// within a single game (one board size), so sharing keys across sizes is
+/// fine.
+static KEYS: [[u64; PIECE_CODES]; GRAND_CELL_COUNT] = build_keys();
+
+static BLACK_TO_MOVE: u64 = zobrist_key((GRAND_CELL_COUNT * PIECE_CODES) as u64);
 
 /// Hash of a position: board contents + player to move. Two positions
 /// compare equal for the threefold-repetition rule iff both match.
 pub(crate) fn position_hash(board: &CrownfallBoardState, next_player: CrownfallPlayerKind) -> u64 {
-    let mut hash = FNV_OFFSET_BASIS;
-    for cell in board.cells() {
-        let byte = match cell {
-            None => 0u8,
-            // 4 possible kinds, so the player multiplier must be >= 4 to keep
-            // every (kind, player) combination mapped to a distinct byte.
-            Some(piece) => 1 + piece.kind as u8 + 4 * piece.player as u8,
-        };
-        hash ^= byte as u64;
-        hash = hash.wrapping_mul(FNV_PRIME);
+    let mut hash = 0u64;
+    for (index, cell) in board.cells().iter().enumerate() {
+        if let Some(piece) = cell {
+            hash ^= KEYS[index][piece.kind as usize + 4 * piece.player as usize];
+        }
     }
-    hash ^= next_player as u8 as u64;
-    hash.wrapping_mul(FNV_PRIME)
+    if matches!(next_player, CrownfallPlayerKind::Black) {
+        hash ^= BLACK_TO_MOVE;
+    }
+    hash
 }

@@ -38,7 +38,7 @@ pub enum CrownfallPieceKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum CrownfallBoardVariant {
-    /// 5x5, 4 Knights / 3 Spies / 1 Crown per side.
+    /// 5x5, 3 Knights / 2 Spies / 1 Crown per side.
     Mini,
     /// 7x7, 6 Knights / 3 Spies / 1 Crown per side - the original ruleset.
     Normal,

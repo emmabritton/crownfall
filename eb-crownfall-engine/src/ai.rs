@@ -149,39 +149,55 @@ pub fn best_move(
     // in place and rolls it back.
     let mut game = game.clone();
     let rules = game.rules;
-    let moves = collect_moves(&game.board, player, rules);
+    let mut moves = collect_moves(&game.board, player, rules);
+    // Iterative deepening: search depth 1, 2, ... up to the requested depth,
+    // rotating each iteration's best root move to the front for the next.
+    // The shallow passes cost a small fraction of the final one and their
+    // move ordering makes alpha-beta cut far more of the deep tree — the net
+    // is faster than a single full-depth pass. `depth == 0` has always meant
+    // "evaluate each move's immediate result", i.e. the same tree as 1.
     let mut best: Option<CrownfallPlayerAction> = None;
-    let mut best_score = i32::MIN;
-    let mut alpha = i32::MIN + 1;
-    let beta = i32::MAX - 1;
-    for &(from, to) in &moves.moves[..moves.len] {
-        let action = CrownfallPlayerAction::Move {
-            player,
-            from: CrownfallBoardCell::new_index(from as usize),
-            to: CrownfallBoardCell::new_index(to as usize),
+    for iteration_depth in 1..=depth.max(1) {
+        let mut best_slot: Option<usize> = None;
+        let mut best_score = i32::MIN;
+        let mut alpha = i32::MIN + 1;
+        let beta = i32::MAX - 1;
+        for slot in 0..moves.len {
+            let (from, to) = moves.moves[slot];
+            let action = CrownfallPlayerAction::Move {
+                player,
+                from: CrownfallBoardCell::new_index(from as usize),
+                to: CrownfallBoardCell::new_index(to as usize),
+            };
+            let undo = snapshot(&game);
+            // `apply_action_quiet` leaves the game untouched on Err, so no
+            // rollback is needed to skip the move.
+            if game.apply_action_quiet(action).is_err() {
+                continue;
+            }
+            let score = -negamax(
+                &mut game,
+                player.opposite(),
+                iteration_depth - 1,
+                personality,
+                -beta,
+                -alpha,
+            );
+            restore(&mut game, &undo);
+            if best_slot.is_none() || score > best_score {
+                best_score = score;
+                best_slot = Some(slot);
+                best = Some(action);
+            }
+            if score > alpha {
+                alpha = score;
+            }
+        }
+        let Some(slot) = best_slot else {
+            // Every root move was rejected — deeper passes can't differ.
+            break;
         };
-        let undo = snapshot(&game);
-        // `apply_action_quiet` leaves the game untouched on Err, so no
-        // rollback is needed to skip the move.
-        if game.apply_action_quiet(action).is_err() {
-            continue;
-        }
-        let score = -negamax(
-            &mut game,
-            player.opposite(),
-            depth.saturating_sub(1),
-            personality,
-            -beta,
-            -alpha,
-        );
-        restore(&mut game, &undo);
-        if best.is_none() || score > best_score {
-            best_score = score;
-            best = Some(action);
-        }
-        if score > alpha {
-            alpha = score;
-        }
+        moves.moves[..=slot].rotate_right(1);
     }
     best
 }
@@ -265,7 +281,14 @@ fn collect_moves(
         false
     };
     let cell_count = tables::cell_count(board.variant());
-    let must_capture = must_capture_rule_enabled && board.has_available_capture(player, rules);
+    // Under mandatory capture, each candidate's capture flag is computed
+    // once here (against a single scratch board, two cell writes per
+    // candidate) and the list is filtered afterwards - not the
+    // `has_available_capture` pre-scan plus a second per-move check, which
+    // would run the same capture detection twice per candidate.
+    let mut captures = [false; MAX_MOVES];
+    let mut any_capture = false;
+    let mut scratch = *board;
     for index in 0..cell_count {
         if let Some(piece) = board.cells()[index]
             && piece.player == player
@@ -274,27 +297,115 @@ fn collect_moves(
                 if board.cells()[to as usize].is_some() {
                     continue;
                 }
-                if must_capture {
-                    let mut scratch = *board;
+                if must_capture_rule_enabled {
                     scratch.cells_mut()[index] = None;
                     scratch.cells_mut()[to as usize] = Some(piece);
                     let to_cell = CrownfallBoardCell::new_index(to as usize);
-                    if !scratch.move_captures_something(to_cell, player, piece.kind, rules) {
-                        continue;
-                    }
+                    let this_captures =
+                        scratch.move_captures_something(to_cell, player, piece.kind, rules);
+                    scratch.cells_mut()[to as usize] = None;
+                    scratch.cells_mut()[index] = Some(piece);
+                    captures[list.len] = this_captures;
+                    any_capture |= this_captures;
                 }
                 list.moves[list.len] = (index as u8, to);
                 list.len += 1;
             }
         }
     }
+    if any_capture {
+        let mut kept = 0;
+        for (slot, &this_captures) in captures[..list.len].iter().enumerate() {
+            if this_captures {
+                list.moves[kept] = list.moves[slot];
+                kept += 1;
+            }
+        }
+        list.len = kept;
+    }
+    order_moves(board, &mut list, player, rules);
     list
 }
 
-fn crown_index(board: &CrownfallBoardState, player: CrownfallPlayerKind) -> Option<usize> {
-    board.cells().iter().position(|piece| {
-        matches!(piece, Some(piece) if piece.player == player && piece.kind == CrownfallPieceKind::Crown)
-    })
+/// Reorders `list` into three tiers: moves whose destination touches an
+/// enemy piece (via plain adjacency, the Knight capture shape, or Archer
+/// range) first, then quiet moves that advance toward the enemy Crown
+/// (matching the evaluator's proximity term), then the rest. Promising moves
+/// resolving early is what makes alpha-beta's cutoffs bite - ordering is a
+/// pure heuristic and never changes which moves are searched, only the order
+/// (a counting sort keeps relative order within each tier, so tie-breaking
+/// stays deterministic).
+fn order_moves(
+    board: &CrownfallBoardState,
+    list: &mut MoveList,
+    player: CrownfallPlayerKind,
+    rules: CrownfallRules,
+) {
+    if list.len < 2 {
+        return;
+    }
+    let variant = board.variant();
+    let diagonal_knights = matches!(
+        rules.ruleset,
+        CrownfallRuleset::Custom {
+            knights_move_diagonally: true,
+            ..
+        }
+    );
+    let enemy_crown = board.cells().iter().position(|cell| {
+        matches!(cell, Some(piece) if piece.player != player && piece.kind == CrownfallPieceKind::Crown)
+    });
+
+    let mut tiers = [0u8; MAX_MOVES];
+    let mut tier_counts = [0usize; 3];
+    for (slot, &(from, to)) in list.moves[..list.len].iter().enumerate() {
+        let enemy_at = |&n: &u8| {
+            matches!(board.cells()[n as usize], Some(piece) if piece.player != player)
+        };
+        let mut tactical = tables::ortho(variant, to as usize).iter().any(enemy_at);
+        if !tactical {
+            // `from` is occupied by construction - see collect_moves.
+            tactical = match board.cells()[from as usize].map(|piece| piece.kind) {
+                Some(CrownfallPieceKind::Knight) => {
+                    let arc = if diagonal_knights {
+                        tables::knight_moves(variant, player, to as usize)
+                    } else {
+                        tables::knight_arcs(variant, player, to as usize)
+                    };
+                    arc.iter().any(enemy_at)
+                }
+                Some(CrownfallPieceKind::Archer) => tables::archer_range(variant, to as usize)
+                    .iter()
+                    .any(enemy_at),
+                _ => false,
+            };
+        }
+        let tier = if tactical {
+            0
+        } else if let Some(crown) = enemy_crown
+            && tables::dist(variant, crown, to as usize)
+                < tables::dist(variant, crown, from as usize)
+        {
+            1
+        } else {
+            2
+        };
+        tiers[slot] = tier;
+        tier_counts[tier as usize] += 1;
+    }
+
+    let mut next = [
+        0,
+        tier_counts[0],
+        tier_counts[0] + tier_counts[1],
+    ];
+    let mut ordered = [(0u8, 0u8); MAX_MOVES];
+    for (slot, &entry) in list.moves[..list.len].iter().enumerate() {
+        let tier = tiers[slot] as usize;
+        ordered[next[tier]] = entry;
+        next[tier] += 1;
+    }
+    list.moves[..list.len].copy_from_slice(&ordered[..list.len]);
 }
 
 /// Static evaluation from `player`'s point of view. Three symmetric terms:
@@ -314,13 +425,32 @@ fn evaluate(
     let weights = personality.weights();
     let board = &game.board;
     let variant = board.variant();
+    let diagonal_knights = matches!(
+        game.rules.ruleset,
+        CrownfallRuleset::Custom {
+            knights_move_diagonally: true,
+            ..
+        }
+    );
     // Manhattan distance is at most 2*(board_length-1) (opposite corners);
     // subtracting it from this yields a "closer is bigger" score.
     let max_distance = 2 * (board.board_length() as i32 - 1);
     // Proximity to a Crown that's already been captured is meaningless, so a
-    // missing Crown zeroes that side's proximity term.
-    let own_crown = crown_index(board, player);
-    let enemy_crown = crown_index(board, player.opposite());
+    // missing Crown zeroes that side's proximity term. Both Crowns are found
+    // in one pass rather than two full `position` scans.
+    let mut own_crown = None;
+    let mut enemy_crown = None;
+    for (index, cell) in board.cells().iter().enumerate() {
+        if let Some(piece) = cell
+            && piece.kind == CrownfallPieceKind::Crown
+        {
+            if piece.player == player {
+                own_crown = Some(index);
+            } else {
+                enemy_crown = Some(index);
+            }
+        }
+    }
 
     let mut material = 0;
     let mut mobility = 0;
@@ -340,7 +470,19 @@ fn evaluate(
                 CrownfallPieceKind::Archer => weights.archer,
             };
 
-        for &to in board.move_candidates(CrownfallBoardCell::new_index(index), game.rules) {
+        // Equivalent to `move_candidates`, but reuses the piece already in
+        // hand instead of re-reading the cell and re-matching the ruleset -
+        // this loop runs for every piece at every leaf of the search.
+        let candidates = if piece.kind == CrownfallPieceKind::Knight {
+            if diagonal_knights {
+                tables::knight_diagonal_moves(variant, piece.player, index)
+            } else {
+                tables::knight_moves(variant, piece.player, index)
+            }
+        } else {
+            tables::ortho(variant, index)
+        };
+        for &to in candidates {
             if board.cells()[to as usize].is_none() {
                 mobility += sign;
             }
