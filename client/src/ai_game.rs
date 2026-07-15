@@ -72,7 +72,7 @@ impl AiGameScene {
     fn animate_or_apply(&mut self, next: CrownfallGame, turn_result: Option<CrownfallTurnResult>) {
         let move_cells = turn_result.as_ref().and_then(move_cells);
         if let Some((from, to)) = move_cells
-            && let Some(piece) = self.game.board.cells()[from.index]
+            && let Some(piece) = self.game.board.cells()[from.to_index()]
         {
             self.animation = Some(MoveAnimation {
                 piece,
@@ -114,10 +114,10 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
         graphics.clear(BACKGROUND);
         self.board_renderer.render(graphics);
         for (i, cell) in self.game.board.cells().iter().enumerate() {
-            if self.drag.as_ref().is_some_and(|d| d.origin.index == i) {
+            if self.drag.as_ref().is_some_and(|d| d.origin.to_index() == i) {
                 continue;
             }
-            if self.animation.as_ref().is_some_and(|a| a.from.index == i) {
+            if self.animation.as_ref().is_some_and(|a| a.from.to_index() == i) {
                 continue;
             }
             if let Some(cell) = cell {
@@ -142,7 +142,7 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
                 let pos = self.board_renderer.pos_for(*destination, self.game.board.variant());
                 graphics.draw_indexed_image(pos, &self.highlight_image);
             }
-            if let Some(piece) = self.game.board.cells()[drag.origin.index] {
+            if let Some(piece) = self.game.board.cells()[drag.origin.to_index()] {
                 let image = self.piece_renderer.image_for_piece(&piece);
                 let half_cell = (CELL_SIZE / 2) as isize;
                 let xy = drag.pointer - Coord::new(half_cell, half_cell);
@@ -166,8 +166,8 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
         let Some(cell) = self.board_renderer.cell_at(mouse.xy, self.game.board.variant()) else {
             return;
         };
-        if let Some(piece) = self.game.board.cells()[cell.index]
-            && piece.player == HUMAN
+        if let Some(piece) = self.game.board.cells()[cell.to_index()]
+            && piece.player() == HUMAN
         {
             self.drag = Some(DragState {
                 origin: cell,

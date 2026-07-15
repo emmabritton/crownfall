@@ -37,7 +37,7 @@ fn legal_moves(game: &CrownfallGame, player: CrownfallPlayerKind) -> Vec<Crownfa
     let mut moves = Vec::new();
     for index in 0..game.board.cells().len() {
         if let Some(piece) = game.board.cells()[index]
-            && piece.player == player
+            && piece.player() == player
         {
             let from = CrownfallBoardCell::new_index(index);
             for to in game.board.get_valid_destinations_for(from, game.rules) {

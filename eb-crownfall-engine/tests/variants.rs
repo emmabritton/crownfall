@@ -20,7 +20,7 @@ fn place(
 ) {
     let variant = board.variant();
     board.cells_mut()[CrownfallBoardCell::new_coord(x, y, variant).to_index()] =
-        Some(CrownfallPiece { kind, player });
+        Some(CrownfallPiece::new(kind, player));
 }
 
 fn piece_at(board: &CrownfallBoardState, x: usize, y: usize) -> Option<CrownfallPiece> {
@@ -65,7 +65,7 @@ fn count(
         .cells()
         .iter()
         .flatten()
-        .filter(|p| p.player == player && p.kind == kind)
+        .filter(|p| p.player() == player && p.kind() == kind)
         .count()
 }
 
@@ -114,10 +114,7 @@ fn mini_board_movement_and_capture_still_work() {
     ));
     assert_eq!(
         piece_at(&game.board, 2, 1),
-        Some(CrownfallPiece {
-            kind: Spy,
-            player: White
-        })
+        Some(CrownfallPiece::new(Spy, White))
     );
 }
 
@@ -259,18 +256,12 @@ fn archer_ranged_capture_with_orthogonally_adjacent_ally() {
     );
     assert_eq!(
         piece_at(&game.board, 3, 4),
-        Some(CrownfallPiece {
-            kind: Spy,
-            player: White
-        }),
+        Some(CrownfallPiece::new(Spy, White)),
         "ally isn't consumed"
     );
     assert_eq!(
         piece_at(&game.board, 6, 4),
-        Some(CrownfallPiece {
-            kind: Archer,
-            player: White
-        }),
+        Some(CrownfallPiece::new(Archer, White)),
         "archer doesn't move as part of firing"
     );
 }
@@ -292,10 +283,7 @@ fn archer_ranged_capture_invalid_with_diagonally_adjacent_ally() {
     ));
     assert_eq!(
         piece_at(&game.board, 4, 4),
-        Some(CrownfallPiece {
-            kind: Knight,
-            player: Black
-        }),
+        Some(CrownfallPiece::new(Knight, Black)),
         "target survives - the ally was never orthogonally adjacent"
     );
 }
@@ -318,10 +306,7 @@ fn archer_cannot_be_an_ordinary_pincer_partner() {
     ));
     assert_eq!(
         piece_at(&game.board, 4, 4),
-        Some(CrownfallPiece {
-            kind: Crown,
-            player: Black
-        }),
+        Some(CrownfallPiece::new(Crown, Black)),
         "Crown+Archer is never a valid capturing pair"
     );
 }
@@ -344,10 +329,7 @@ fn archer_shot_does_not_fire_from_a_different_pieces_move() {
     ));
     assert_eq!(
         piece_at(&game.board, 4, 4),
-        Some(CrownfallPiece {
-            kind: Knight,
-            player: Black
-        }),
+        Some(CrownfallPiece::new(Knight, Black)),
         "the stationary archer doesn't fire off another piece's move"
     );
 }
@@ -387,10 +369,7 @@ fn mandatory_capture_rejects_a_non_capturing_move_when_a_capture_is_available() 
     assert!(matches!(err, CrownfallError::CaptureRequired(White)));
     assert_eq!(
         piece_at(&game.board, 0, 0),
-        Some(CrownfallPiece {
-            kind: Spy,
-            player: White
-        }),
+        Some(CrownfallPiece::new(Spy, White)),
         "the rejected move never applied"
     );
 }
@@ -458,18 +437,12 @@ fn all_captures_processed_resolves_both_the_trap_and_the_movers_capture() {
     );
     assert_eq!(
         piece_at(&game.board, 3, 1),
-        Some(CrownfallPiece {
-            kind: Spy,
-            player: White
-        }),
+        Some(CrownfallPiece::new(Spy, White)),
         "white's uninvolved partner spy is untouched"
     );
     assert_eq!(
         piece_at(&game.board, 2, 3),
-        Some(CrownfallPiece {
-            kind: Spy,
-            player: Black
-        }),
+        Some(CrownfallPiece::new(Spy, Black)),
         "black's trap attackers are untouched (Spy Capture never sacrifices an attacker)"
     );
 }
@@ -541,10 +514,7 @@ fn diagonal_knight_capture_valid_when_moved_knight_lands_left_or_right() {
     );
     assert_eq!(
         piece_at(&game.board, 3, 4),
-        Some(CrownfallPiece {
-            kind: Knight,
-            player: White
-        }),
+        Some(CrownfallPiece::new(Knight, White)),
         "partner knight survives"
     );
 }
@@ -567,10 +537,7 @@ fn diagonal_knight_capture_invalid_when_moved_knight_lands_straight_ahead() {
     ));
     assert_eq!(
         piece_at(&game.board, 3, 3),
-        Some(CrownfallPiece {
-            kind: Knight,
-            player: Black
-        }),
+        Some(CrownfallPiece::new(Knight, Black)),
         "target survives - the moved knight landed in the non-exposed straight-ahead cell"
     );
 }

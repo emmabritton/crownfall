@@ -87,7 +87,7 @@ impl GameScene {
         });
         if let Some((_, from, to)) = moved_by_other
             && let GameClientState::Playing(current, _) = &self.state
-            && let Some(piece) = current.game.board.cells()[from.index]
+            && let Some(piece) = current.game.board.cells()[from.to_index()]
         {
             self.animation = Some(MoveAnimation {
                 piece,
@@ -132,10 +132,10 @@ impl Scene<SceneResult, SceneName> for GameScene {
             GameClientState::Playing(web_game, is_white) => {
                 self.board_renderer.render(graphics);
                 for (i, cell) in web_game.game.board.cells().iter().enumerate() {
-                    if self.drag.as_ref().is_some_and(|d| d.origin.index == i) {
+                    if self.drag.as_ref().is_some_and(|d| d.origin.to_index() == i) {
                         continue;
                     }
-                    if self.animation.as_ref().is_some_and(|a| a.from.index == i) {
+                    if self.animation.as_ref().is_some_and(|a| a.from.to_index() == i) {
                         continue;
                     }
                     if let Some(cell) = cell {
@@ -160,7 +160,7 @@ impl Scene<SceneResult, SceneName> for GameScene {
                         let pos = self.board_renderer.pos_for(*destination, web_game.game.board.variant());
                         graphics.draw_indexed_image(pos, &self.highlight_image);
                     }
-                    if let Some(piece) = web_game.game.board.cells()[drag.origin.index] {
+                    if let Some(piece) = web_game.game.board.cells()[drag.origin.to_index()] {
                         let image = self.piece_renderer.image_for_piece(&piece);
                         let half_cell = (CELL_SIZE / 2) as isize;
                         let xy = drag.pointer - Coord::new(half_cell, half_cell);
@@ -217,8 +217,8 @@ impl Scene<SceneResult, SceneName> for GameScene {
         let Some(cell) = self.board_renderer.cell_at(mouse.xy, web_game.game.board.variant()) else {
             return;
         };
-        if let Some(piece) = web_game.game.board.cells()[cell.index]
-            && piece.player == play_state.player()
+        if let Some(piece) = web_game.game.board.cells()[cell.to_index()]
+            && piece.player() == play_state.player()
         {
             self.drag = Some(DragState {
                 origin: cell,
@@ -271,8 +271,8 @@ impl Scene<SceneResult, SceneName> for GameScene {
                 // Optimistically apply the move locally so the piece doesn't snap
                 // back to its origin while waiting for the server's confirmation.
                 Ok(()) => {
-                    let moved = web_game.game.board.cells_mut()[drag.origin.index].take();
-                    web_game.game.board.cells_mut()[target.index] = moved;
+                    let moved = web_game.game.board.cells_mut()[drag.origin.to_index()].take();
+                    web_game.game.board.cells_mut()[target.to_index()] = moved;
                 }
                 Err(e) => self.state = GameClientState::Error(e.to_string()),
             }

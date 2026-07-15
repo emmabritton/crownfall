@@ -64,20 +64,20 @@ impl PieceRenderer {
     }
 
     pub fn image_for_piece(&self, piece: &CrownfallPiece) -> &IndexedImage {
-        match piece.kind {
-            CrownfallPieceKind::Crown => match piece.player {
+        match piece.kind() {
+            CrownfallPieceKind::Crown => match piece.player() {
                 CrownfallPlayerKind::White => &self.crown_white,
                 CrownfallPlayerKind::Black => &self.crown_black,
             },
-            CrownfallPieceKind::Knight => match piece.player {
+            CrownfallPieceKind::Knight => match piece.player() {
                 CrownfallPlayerKind::White => &self.knight_white,
                 CrownfallPlayerKind::Black => &self.knight_black,
             },
-            CrownfallPieceKind::Spy => match piece.player {
+            CrownfallPieceKind::Spy => match piece.player() {
                 CrownfallPlayerKind::White => &self.spy_white,
                 CrownfallPlayerKind::Black => &self.spy_black,
             },
-            CrownfallPieceKind::Archer => match piece.player {
+            CrownfallPieceKind::Archer => match piece.player() {
                 CrownfallPlayerKind::White => &self.arrow_white,
                 CrownfallPlayerKind::Black => &self.arrow_black,
             },

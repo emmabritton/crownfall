@@ -14,6 +14,7 @@ pub mod prelude {
 }
 
 use alloc::vec::Vec;
+use core::num::NonZeroU8;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "serde")]
@@ -22,13 +23,16 @@ use serde_big_array::BigArray;
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum CrownfallPieceKind {
-    Crown,
-    Knight,
-    Spy,
+    // Explicit discriminants: these double as the low two bits of
+    // `CrownfallPiece`'s packed byte, so reordering them would silently
+    // change the packing (and the serialized piece bytes).
+    Crown = 0,
+    Knight = 1,
+    Spy = 2,
     /// Grand-variant only: captures at range 2 (orthogonal) instead of by
     /// pincer, provided an allied Crown/Knight/Spy is orthogonally adjacent
     /// to the target. See `CrownfallBoardState::check_archer_capture`.
-    Archer,
+    Archer = 3,
 }
 
 /// The three supported board sizes/piece-set combinations. Each is a
@@ -224,11 +228,105 @@ impl DrawReason {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CrownfallPiece {
-    pub kind: CrownfallPieceKind,
-    pub player: CrownfallPlayerKind,
+/// A piece on the board, packed into one byte: bits 0-1 the kind, bit 2 the
+/// player, bit 3 always set (the occupancy marker that keeps the value
+/// non-zero). Backing it with `NonZeroU8` gives `Option<CrownfallPiece>` the
+/// niche optimization - one byte per board cell instead of two - which
+/// halves every board copy and scan in the AI search's hot path (and the
+/// GBA's memory traffic with it). Unpacking `kind()`/`player()` is a single
+/// AND/shift, and piece equality is a plain byte compare.
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
+#[repr(transparent)]
+pub struct CrownfallPiece(NonZeroU8);
+
+impl CrownfallPiece {
+    /// Bit 3: set on every valid piece, so the packed byte is never zero
+    /// (the `NonZeroU8` niche) and never collides with an empty cell.
+    const OCCUPIED: u8 = 0b1000;
+
+    pub const fn new(kind: CrownfallPieceKind, player: CrownfallPlayerKind) -> CrownfallPiece {
+        let byte = Self::OCCUPIED | ((player as u8) << 2) | kind as u8;
+        match NonZeroU8::new(byte) {
+            Some(value) => CrownfallPiece(value),
+            // OCCUPIED is always set, so the byte is never zero.
+            None => unreachable!(),
+        }
+    }
+
+    pub const fn kind(self) -> CrownfallPieceKind {
+        match self.0.get() & 0b11 {
+            0 => CrownfallPieceKind::Crown,
+            1 => CrownfallPieceKind::Knight,
+            2 => CrownfallPieceKind::Spy,
+            _ => CrownfallPieceKind::Archer,
+        }
+    }
+
+    pub const fn player(self) -> CrownfallPlayerKind {
+        if self.0.get() & 0b100 == 0 {
+            CrownfallPlayerKind::White
+        } else {
+            CrownfallPlayerKind::Black
+        }
+    }
+
+    /// `kind + 4 * player` - the per-piece index into the Zobrist key table
+    /// (see `hash::piece_key`), which the packing makes a single mask.
+    pub(crate) const fn code(self) -> usize {
+        (self.0.get() & 0b111) as usize
+    }
+
+    /// The packed byte, for the serde impls below.
+    #[cfg(feature = "serde")]
+    const fn to_byte(self) -> u8 {
+        self.0.get()
+    }
+
+    /// Inverse of `to_byte`; `None` for any byte that isn't a valid packed
+    /// piece (used to validate deserialized input).
+    #[cfg(feature = "serde")]
+    const fn from_byte(byte: u8) -> Option<CrownfallPiece> {
+        if byte & !0b111 != Self::OCCUPIED {
+            return None;
+        }
+        match NonZeroU8::new(byte) {
+            Some(value) => Some(CrownfallPiece(value)),
+            None => None,
+        }
+    }
+}
+
+impl core::fmt::Debug for CrownfallPiece {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("CrownfallPiece")
+            .field("kind", &self.kind())
+            .field("player", &self.player())
+            .finish()
+    }
+}
+
+/// Serialized as the packed byte (8-15), not a `{kind, player}` map - both
+/// halves of the protocol live in this workspace, so the wire format only
+/// has to agree with itself, and a bare integer keeps board packets small.
+/// Deserialization rejects any byte that isn't a valid packed piece.
+#[cfg(feature = "serde")]
+impl Serialize for CrownfallPiece {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_u8(self.to_byte())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for CrownfallPiece {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let byte = u8::deserialize(deserializer)?;
+        CrownfallPiece::from_byte(byte).ok_or_else(|| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Unsigned(byte as u64),
+                &"a packed Crownfall piece byte (8-15)",
+            )
+        })
+    }
 }
 
 /// The board itself: a fixed-size cell array per supported size. Most
@@ -324,29 +422,40 @@ pub struct CrownfallGame {
     pub moves_since_capture: u16,
 }
 
+/// A board position as a cell index. Stored as `u8` (the largest board has
+/// 81 cells), which shrinks every type that carries positions - actions,
+/// turn results, play state, the AI's undo records - and means a
+/// deserialized index above 255 is rejected by serde outright; indices
+/// 82-255 are still caught by `apply_move`'s cell-count guard. The
+/// `new_index`/`to_index` API stays `usize`-based so callers can keep
+/// indexing slices without casts.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CrownfallBoardCell {
-    pub index: usize,
+    pub index: u8,
 }
 
 impl CrownfallBoardCell {
     pub fn new_index(index: usize) -> CrownfallBoardCell {
-        CrownfallBoardCell { index }
+        debug_assert!(
+            index <= u8::MAX as usize,
+            "cell index {index} exceeds the largest supported board"
+        );
+        CrownfallBoardCell { index: index as u8 }
     }
 
     pub fn new_coord(x: usize, y: usize, board: CrownfallBoardVariant) -> CrownfallBoardCell {
         CrownfallBoardCell {
-            index: x + y * tables::board_length(board),
+            index: (x + y * tables::board_length(board)) as u8,
         }
     }
 
     pub fn to_index(self) -> usize {
-        self.index
+        self.index as usize
     }
 
     pub fn to_coord(self, board: CrownfallBoardVariant) -> (usize, usize) {
-        let (x, y) = tables::coord(board, self.index);
+        let (x, y) = tables::coord(board, self.to_index());
         (x as usize, y as usize)
     }
 }
@@ -354,8 +463,10 @@ impl CrownfallBoardCell {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum CrownfallPlayerKind {
-    White,
-    Black,
+    // Explicit discriminants: bit 2 of `CrownfallPiece`'s packed byte, and
+    // the index into the per-player lookup tables/count arrays.
+    White = 0,
+    Black = 1,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -7,7 +7,7 @@
 //! ROM on the GBA build. The hash runs once per applied move, including
 //! every node of the AI search.
 use crate::tables::GRAND_CELL_COUNT;
-use crate::{CrownfallBoardState, CrownfallPlayerKind};
+use crate::{CrownfallBoardState, CrownfallPiece, CrownfallPlayerKind};
 
 /// 4 piece kinds x 2 players.
 const PIECE_CODES: usize = 8;
@@ -43,13 +43,29 @@ static KEYS: [[u64; PIECE_CODES]; GRAND_CELL_COUNT] = build_keys();
 
 static BLACK_TO_MOVE: u64 = zobrist_key((GRAND_CELL_COUNT * PIECE_CODES) as u64);
 
+/// The Zobrist key of one (cell, piece) pairing. XORing this into a position
+/// hash adds/removes that piece, which is what lets `resolve_continuation`
+/// derive each new hash incrementally from the previous one (a handful of
+/// XORs) instead of rescanning the whole board every applied move.
+#[inline]
+pub(crate) fn piece_key(index: usize, piece: CrownfallPiece) -> u64 {
+    KEYS[index][piece.code()]
+}
+
+/// The side-to-move key. The player to move flips on every applied action,
+/// so an incremental hash update always XORs this exactly once.
+#[inline]
+pub(crate) fn side_to_move_toggle() -> u64 {
+    BLACK_TO_MOVE
+}
+
 /// Hash of a position: board contents + player to move. Two positions
 /// compare equal for the threefold-repetition rule iff both match.
 pub(crate) fn position_hash(board: &CrownfallBoardState, next_player: CrownfallPlayerKind) -> u64 {
     let mut hash = 0u64;
     for (index, cell) in board.cells().iter().enumerate() {
         if let Some(piece) = cell {
-            hash ^= KEYS[index][piece.kind as usize + 4 * piece.player as usize];
+            hash ^= piece_key(index, *piece);
         }
     }
     if matches!(next_player, CrownfallPlayerKind::Black) {

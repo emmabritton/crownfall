@@ -9,8 +9,9 @@
 //! the actual search work.
 use crate::{tables, CrownfallRuleset};
 use crate::{
-    CrownfallBoardCell, CrownfallBoardState, CrownfallGame, CrownfallGameState, CrownfallPieceKind,
-    CrownfallPlayerAction, CrownfallPlayerKind, CrownfallRules,
+    CrownfallBoardCell, CrownfallBoardState, CrownfallBoardVariant, CrownfallGame,
+    CrownfallGameState, CrownfallPiece, CrownfallPieceKind, CrownfallPlayerAction,
+    CrownfallPlayerKind, CrownfallRules,
 };
 
 const VICTORY_SCORE: i32 = 1000000;
@@ -52,6 +53,28 @@ fn restore(game: &mut CrownfallGame, undo: &Undo) {
     game.state = undo.state;
     game.moves_since_capture = undo.moves_since_capture;
     game.history.truncate(undo.history_len);
+}
+
+/// The movement-candidate table for `piece` standing at `index` - the same
+/// selection `CrownfallBoardState::move_candidates` makes, but taking the
+/// piece by value so the hot loops here (move generation and evaluation, both
+/// run at every search node) skip the cell re-read and per-call ruleset match.
+#[inline]
+fn candidate_table(
+    variant: CrownfallBoardVariant,
+    piece: CrownfallPiece,
+    index: usize,
+    diagonal_knights: bool,
+) -> &'static [u8] {
+    if piece.kind() == CrownfallPieceKind::Knight {
+        if diagonal_knights {
+            tables::knight_diagonal_moves(variant, piece.player(), index)
+        } else {
+            tables::knight_moves(variant, piece.player(), index)
+        }
+    } else {
+        tables::ortho(variant, index)
+    }
 }
 
 /// How many plies the AI searches ahead. Higher sees further into forced
@@ -157,6 +180,9 @@ pub fn best_move(
     // is faster than a single full-depth pass. `depth == 0` has always meant
     // "evaluate each move's immediate result", i.e. the same tree as 1.
     let mut best: Option<CrownfallPlayerAction> = None;
+    // Every candidate is rolled back to the same pre-move position, so one
+    // snapshot serves the entire search instead of one board copy per move.
+    let undo = snapshot(&game);
     for iteration_depth in 1..=depth.max(1) {
         let mut best_slot: Option<usize> = None;
         let mut best_score = i32::MIN;
@@ -169,7 +195,6 @@ pub fn best_move(
                 from: CrownfallBoardCell::new_index(from as usize),
                 to: CrownfallBoardCell::new_index(to as usize),
             };
-            let undo = snapshot(&game);
             // `apply_action_quiet` leaves the game untouched on Err, so no
             // rollback is needed to skip the move.
             if game.apply_action_quiet(action).is_err() {
@@ -231,13 +256,15 @@ fn negamax(
     }
 
     let mut best = i32::MIN + 1;
+    // One snapshot per node - every move tried here rolls back to the same
+    // position, so there's no need to re-copy the board per move.
+    let undo = snapshot(game);
     for &(from, to) in &moves.moves[..moves.len] {
         let action = CrownfallPlayerAction::Move {
             player,
             from: CrownfallBoardCell::new_index(from as usize),
             to: CrownfallBoardCell::new_index(to as usize),
         };
-        let undo = snapshot(game);
         if game.apply_action_quiet(action).is_err() {
             continue;
         }
@@ -280,7 +307,15 @@ fn collect_moves(
     } else {
         false
     };
-    let cell_count = tables::cell_count(board.variant());
+    let variant = board.variant();
+    let diagonal_knights = matches!(
+        rules.ruleset,
+        CrownfallRuleset::Custom {
+            knights_move_diagonally: true,
+            ..
+        }
+    );
+    let cell_count = tables::cell_count(variant);
     // Under mandatory capture, each candidate's capture flag is computed
     // once here (against a single scratch board, two cell writes per
     // candidate) and the list is filtered afterwards - not the
@@ -291,9 +326,9 @@ fn collect_moves(
     let mut scratch = *board;
     for index in 0..cell_count {
         if let Some(piece) = board.cells()[index]
-            && piece.player == player
+            && piece.player() == player
         {
-            for &to in board.move_candidates(CrownfallBoardCell::new_index(index), rules) {
+            for &to in candidate_table(variant, piece, index, diagonal_knights) {
                 if board.cells()[to as usize].is_some() {
                     continue;
                 }
@@ -302,7 +337,7 @@ fn collect_moves(
                     scratch.cells_mut()[to as usize] = Some(piece);
                     let to_cell = CrownfallBoardCell::new_index(to as usize);
                     let this_captures =
-                        scratch.move_captures_something(to_cell, player, piece.kind, rules);
+                        scratch.move_captures_something(to_cell, player, piece.kind(), rules);
                     scratch.cells_mut()[to as usize] = None;
                     scratch.cells_mut()[index] = Some(piece);
                     captures[list.len] = this_captures;
@@ -353,19 +388,19 @@ fn order_moves(
         }
     );
     let enemy_crown = board.cells().iter().position(|cell| {
-        matches!(cell, Some(piece) if piece.player != player && piece.kind == CrownfallPieceKind::Crown)
+        matches!(cell, Some(piece) if piece.player() != player && piece.kind() == CrownfallPieceKind::Crown)
     });
 
     let mut tiers = [0u8; MAX_MOVES];
     let mut tier_counts = [0usize; 3];
     for (slot, &(from, to)) in list.moves[..list.len].iter().enumerate() {
         let enemy_at = |&n: &u8| {
-            matches!(board.cells()[n as usize], Some(piece) if piece.player != player)
+            matches!(board.cells()[n as usize], Some(piece) if piece.player() != player)
         };
         let mut tactical = tables::ortho(variant, to as usize).iter().any(enemy_at);
         if !tactical {
             // `from` is occupied by construction - see collect_moves.
-            tactical = match board.cells()[from as usize].map(|piece| piece.kind) {
+            tactical = match board.cells()[from as usize].map(|piece| piece.kind()) {
                 Some(CrownfallPieceKind::Knight) => {
                     let arc = if diagonal_knights {
                         tables::knight_moves(variant, player, to as usize)
@@ -435,64 +470,61 @@ fn evaluate(
     // Manhattan distance is at most 2*(board_length-1) (opposite corners);
     // subtracting it from this yields a "closer is bigger" score.
     let max_distance = 2 * (board.board_length() as i32 - 1);
-    // Proximity to a Crown that's already been captured is meaningless, so a
-    // missing Crown zeroes that side's proximity term. Both Crowns are found
-    // in one pass rather than two full `position` scans.
+
+    // Single board pass: material, mobility and both Crown positions in one
+    // scan, recording the non-Crown pieces so the proximity term afterwards
+    // only walks the (few) occupied cells instead of the whole board again.
+    // Sized for a full board so evaluate stays panic-free on any hand-built
+    // test position, not just the real starting layouts.
     let mut own_crown = None;
     let mut enemy_crown = None;
-    for (index, cell) in board.cells().iter().enumerate() {
-        if let Some(piece) = cell
-            && piece.kind == CrownfallPieceKind::Crown
-        {
-            if piece.player == player {
-                own_crown = Some(index);
-            } else {
-                enemy_crown = Some(index);
-            }
-        }
-    }
-
+    let mut pieces = [(0u8, CrownfallPiece::new(CrownfallPieceKind::Crown, player)); tables::GRAND_CELL_COUNT];
+    let mut piece_count = 0;
     let mut material = 0;
     let mut mobility = 0;
-    let mut proximity = 0;
     for (index, &cell) in board.cells().iter().enumerate() {
         let Some(piece) = cell else {
             continue;
         };
-        let mine = piece.player == player;
+        let mine = piece.player() == player;
         let sign = if mine { 1 } else { -1 };
 
         material += sign
-            * match piece.kind {
+            * match piece.kind() {
                 CrownfallPieceKind::Crown => weights.crown,
                 CrownfallPieceKind::Knight => weights.knight,
                 CrownfallPieceKind::Spy => weights.spy,
                 CrownfallPieceKind::Archer => weights.archer,
             };
 
-        // Equivalent to `move_candidates`, but reuses the piece already in
-        // hand instead of re-reading the cell and re-matching the ruleset -
-        // this loop runs for every piece at every leaf of the search.
-        let candidates = if piece.kind == CrownfallPieceKind::Knight {
-            if diagonal_knights {
-                tables::knight_diagonal_moves(variant, piece.player, index)
-            } else {
-                tables::knight_moves(variant, piece.player, index)
-            }
-        } else {
-            tables::ortho(variant, index)
-        };
-        for &to in candidates {
+        for &to in candidate_table(variant, piece, index, diagonal_knights) {
             if board.cells()[to as usize].is_none() {
                 mobility += sign;
             }
         }
 
-        if piece.kind != CrownfallPieceKind::Crown {
-            let target_crown = if mine { enemy_crown } else { own_crown };
-            if let Some(crown) = target_crown {
-                proximity += sign * (max_distance - tables::dist(variant, crown, index) as i32);
+        if piece.kind() == CrownfallPieceKind::Crown {
+            if mine {
+                own_crown = Some(index);
+            } else {
+                enemy_crown = Some(index);
             }
+        } else {
+            pieces[piece_count] = (index as u8, piece);
+            piece_count += 1;
+        }
+    }
+
+    // Proximity to a Crown that's already been captured is meaningless, so a
+    // missing Crown zeroes that side's proximity term.
+    let mut proximity = 0;
+    for &(index, piece) in &pieces[..piece_count] {
+        let mine = piece.player() == player;
+        let target_crown = if mine { enemy_crown } else { own_crown };
+        if let Some(crown) = target_crown {
+            let sign = if mine { 1 } else { -1 };
+            proximity +=
+                sign * (max_distance - tables::dist(variant, crown, index as usize) as i32);
         }
     }
 

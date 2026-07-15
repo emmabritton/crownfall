@@ -29,7 +29,7 @@ fn place(
     player: CrownfallPlayerKind,
 ) {
     board.cells_mut()[CrownfallBoardCell::new_coord(x, y, VARIANT).to_index()] =
-        Some(CrownfallPiece { kind, player });
+        Some(CrownfallPiece::new(kind, player));
 }
 
 fn piece_at(board: &CrownfallBoardState, x: usize, y: usize) -> Option<CrownfallPiece> {
@@ -75,19 +75,19 @@ fn default_board_has_correct_piece_counts_and_positions() {
             .cells()
             .iter()
             .flatten()
-            .filter(|p| p.player == player && p.kind == Crown)
+            .filter(|p| p.player() == player && p.kind() == Crown)
             .count();
         let knights = board
             .cells()
             .iter()
             .flatten()
-            .filter(|p| p.player == player && p.kind == Knight)
+            .filter(|p| p.player() == player && p.kind() == Knight)
             .count();
         let spies = board
             .cells()
             .iter()
             .flatten()
-            .filter(|p| p.player == player && p.kind == Spy)
+            .filter(|p| p.player() == player && p.kind() == Spy)
             .count();
         assert_eq!(crowns, 1, "{player:?} should have exactly 1 Crown");
         assert_eq!(knights, 6, "{player:?} should have exactly 6 Knights");
@@ -96,17 +96,11 @@ fn default_board_has_correct_piece_counts_and_positions() {
     // Crowns sit at the centre of the back row on each side.
     assert_eq!(
         piece_at(&board, 3, 0),
-        Some(CrownfallPiece {
-            kind: Crown,
-            player: Black
-        })
+        Some(CrownfallPiece::new(Crown, Black))
     );
     assert_eq!(
         piece_at(&board, 3, 6),
-        Some(CrownfallPiece {
-            kind: Crown,
-            player: White
-        })
+        Some(CrownfallPiece::new(Crown, White))
     );
 }
 
@@ -260,10 +254,7 @@ fn legal_move_updates_board_and_switches_turn() {
     assert_eq!(piece_at(&game.board, 3, 3), None);
     assert_eq!(
         piece_at(&game.board, 3, 2),
-        Some(CrownfallPiece {
-            kind: Spy,
-            player: White
-        })
+        Some(CrownfallPiece::new(Spy, White))
     );
     assert_eq!(
         game.state,
@@ -378,10 +369,7 @@ fn handle_player_action_is_equivalent_to_apply_action() {
     let (new_game, result) = game.handle_player_action(action).unwrap();
     assert_eq!(
         piece_at(&new_game.board, 3, 2),
-        Some(CrownfallPiece {
-            kind: Spy,
-            player: White
-        })
+        Some(CrownfallPiece::new(Spy, White))
     );
     assert!(matches!(
         result,
@@ -417,10 +405,7 @@ fn knight_capture_valid_diagonal_arc() {
     );
     assert_eq!(
         piece_at(&game.board, 3, 4),
-        Some(CrownfallPiece {
-            kind: Knight,
-            player: White
-        }),
+        Some(CrownfallPiece::new(Knight, White)),
         "partner knight survives"
     );
 }
@@ -443,10 +428,7 @@ fn knight_capture_invalid_when_attackers_are_beside_target() {
     ));
     assert_eq!(
         piece_at(&game.board, 3, 3),
-        Some(CrownfallPiece {
-            kind: Knight,
-            player: Black
-        }),
+        Some(CrownfallPiece::new(Knight, Black)),
         "target survives - flanking knights aren't in the forward arc"
     );
 }
@@ -472,10 +454,7 @@ fn crown_partnered_knight_capture_sacrifices_the_knight_not_the_crown() {
     );
     assert_eq!(
         piece_at(&game.board, 2, 3),
-        Some(CrownfallPiece {
-            kind: Crown,
-            player: White
-        }),
+        Some(CrownfallPiece::new(Crown, White)),
         "crown survives the trade"
     );
 }
@@ -495,18 +474,12 @@ fn crown_partnered_capture_of_a_spy_has_no_sacrifice() {
     assert_eq!(piece_at(&game.board, 3, 3), None, "spy captured");
     assert_eq!(
         piece_at(&game.board, 3, 4),
-        Some(CrownfallPiece {
-            kind: Knight,
-            player: White
-        }),
+        Some(CrownfallPiece::new(Knight, White)),
         "no sacrifice when the target wasn't a Knight"
     );
     assert_eq!(
         piece_at(&game.board, 2, 3),
-        Some(CrownfallPiece {
-            kind: Crown,
-            player: White
-        })
+        Some(CrownfallPiece::new(Crown, White))
     );
 }
 
@@ -530,17 +503,11 @@ fn spy_capture_of_a_spy_removes_target_with_no_sacrifice() {
     assert_eq!(piece_at(&game.board, 3, 3), None);
     assert_eq!(
         piece_at(&game.board, 3, 4),
-        Some(CrownfallPiece {
-            kind: Spy,
-            player: Black
-        })
+        Some(CrownfallPiece::new(Spy, Black))
     );
     assert_eq!(
         piece_at(&game.board, 2, 3),
-        Some(CrownfallPiece {
-            kind: Spy,
-            player: Black
-        })
+        Some(CrownfallPiece::new(Spy, Black))
     );
 }
 
@@ -636,10 +603,7 @@ fn crown_capture_invalid_when_diagonal_knight_did_not_just_move() {
     ));
     assert_eq!(
         piece_at(&game.board, 3, 3),
-        Some(CrownfallPiece {
-            kind: Crown,
-            player: Black
-        }),
+        Some(CrownfallPiece::new(Crown, Black)),
         "a pre-existing diagonal knight doesn't activate the diagonal rule"
     );
 }
@@ -660,10 +624,7 @@ fn crown_capture_invalid_for_spy_and_knight_pair() {
     ));
     assert_eq!(
         piece_at(&game.board, 3, 3),
-        Some(CrownfallPiece {
-            kind: Crown,
-            player: Black
-        })
+        Some(CrownfallPiece::new(Crown, Black))
     );
 }
 
@@ -707,10 +668,7 @@ fn own_crown_trap_takes_priority_over_the_movers_own_capture() {
     assert_eq!(piece_at(&game.board, 3, 3), None, "white crown removed");
     assert_eq!(
         piece_at(&game.board, 4, 3),
-        Some(CrownfallPiece {
-            kind: Knight,
-            player: Black
-        }),
+        Some(CrownfallPiece::new(Knight, Black)),
         "black knight survives - the crown-trap pre-empted the capture check"
     );
 }
@@ -731,17 +689,11 @@ fn own_piece_walking_into_a_spy_pincer_is_captured() {
     assert_eq!(piece_at(&game.board, 3, 3), None);
     assert_eq!(
         piece_at(&game.board, 2, 3),
-        Some(CrownfallPiece {
-            kind: Spy,
-            player: Black
-        })
+        Some(CrownfallPiece::new(Spy, Black))
     );
     assert_eq!(
         piece_at(&game.board, 4, 3),
-        Some(CrownfallPiece {
-            kind: Spy,
-            player: Black
-        })
+        Some(CrownfallPiece::new(Spy, Black))
     );
 }
 
@@ -765,18 +717,12 @@ fn enemy_spy_trap_takes_priority_over_the_movers_own_capture() {
     );
     assert_eq!(
         piece_at(&game.board, 3, 2),
-        Some(CrownfallPiece {
-            kind: Spy,
-            player: Black
-        }),
+        Some(CrownfallPiece::new(Spy, Black)),
         "black spy survives - white's own capture never got evaluated"
     );
     assert_eq!(
         piece_at(&game.board, 3, 1),
-        Some(CrownfallPiece {
-            kind: Spy,
-            player: White
-        }),
+        Some(CrownfallPiece::new(Spy, White)),
         "white's uninvolved partner spy is untouched"
     );
 }

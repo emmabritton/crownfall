@@ -1,4 +1,5 @@
 use crate::errors::CrownfallError;
+use crate::hash;
 use crate::hash::position_hash;
 use crate::tables;
 use crate::*;
@@ -84,6 +85,13 @@ impl CrownfallBoardVariant {
 /// `REPETITION_LIMIT` times, if `NO_PROGRESS_LIMIT` turns have passed since
 /// the last capture, or if `TOTAL_TURN_LIMIT` turns have been played in
 /// total; otherwise `Playing` with `next_player` to move.
+///
+/// `hash_delta` is the XOR of the Zobrist keys of every cell change the
+/// action made (see `hash::piece_key`), letting the new position hash be
+/// derived from the previous history entry in a few XORs instead of a full
+/// board scan - this runs on every applied move, including every node of
+/// the AI search, where it was the scan that dominated. The player-to-move
+/// key flips on every action, so it's folded in here rather than by callers.
 fn resolve_continuation(
     board: &CrownfallBoardState,
     board_variant: CrownfallBoardVariant,
@@ -91,6 +99,7 @@ fn resolve_continuation(
     history: &mut Vec<u64>,
     moves_since_capture: &mut u16,
     captured: bool,
+    hash_delta: u64,
 ) -> CrownfallGameState {
     if captured {
         *moves_since_capture = 0;
@@ -98,7 +107,18 @@ fn resolve_continuation(
         *moves_since_capture += 1;
     }
 
-    let key = position_hash(board, next_player);
+    // Repetition only ever compares hashes *within* one game, so a caller
+    // that seeded `history` with something other than a true position hash
+    // (tests do) stays correct too: every later entry then carries the same
+    // constant XOR offset, which preserves equality. Parity with a full
+    // recompute (for games built via `CrownfallGame::new`) is covered by
+    // the `incremental_hash_matches_full_recompute` unit test.
+    let key = match history.last() {
+        Some(&previous) => previous ^ hash_delta ^ hash::side_to_move_toggle(),
+        // A game deserialized without its history has no previous hash to
+        // build on - fall back to the full scan.
+        None => position_hash(board, next_player),
+    };
     history.push(key);
     // A position can only recur among the entries since the last capture
     // (inclusive) - every earlier position had more pieces on the board -
@@ -130,9 +150,26 @@ fn resolve_continuation(
     }
 }
 
+/// Removes and returns the piece at `index` (if any), folding its Zobrist
+/// key into `hash_delta` so the position hash stays incrementally correct
+/// (see `resolve_continuation`). Occupancy-checked, so overlapping removals
+/// (possible under `all_captures_processed`, e.g. a self-trapped Knight
+/// that would also be sacrificed) never double-XOR a key.
+fn remove_piece(
+    board: &mut CrownfallBoardState,
+    index: usize,
+    hash_delta: &mut u64,
+) -> Option<CrownfallPiece> {
+    let piece = board.cells_mut()[index].take();
+    if let Some(piece) = piece {
+        *hash_delta ^= hash::piece_key(index, piece);
+    }
+    piece
+}
+
 /// Shorthand for building a starting layout.
 fn p(kind: CrownfallPieceKind, player: CrownfallPlayerKind) -> Option<CrownfallPiece> {
-    Some(CrownfallPiece { kind, player })
+    Some(CrownfallPiece::new(kind, player))
 }
 
 /// The Standard (7x7) starting layout: 6 Knights and 1 Spy in a single row
@@ -617,11 +654,11 @@ impl CrownfallBoardState {
         };
         let variant = self.variant();
         match self.cells()[cell.to_index()] {
-            Some(piece) if piece.kind == CrownfallPieceKind::Knight => {
+            Some(piece) if piece.kind() == CrownfallPieceKind::Knight => {
                 if knights_move_diagonally_enabled {
-                    tables::knight_diagonal_moves(variant, piece.player, cell.to_index())
+                    tables::knight_diagonal_moves(variant, piece.player(), cell.to_index())
                 } else {
-                    tables::knight_moves(variant, piece.player, cell.to_index())
+                    tables::knight_moves(variant, piece.player(), cell.to_index())
                 }
             }
             Some(_) => tables::ortho(variant, cell.to_index()),
@@ -701,9 +738,9 @@ impl CrownfallBoardState {
         let mut knights = [0u16; 2];
         let mut spies = [0u16; 2];
         for piece in self.cells().iter().flatten() {
-            match piece.kind {
-                CrownfallPieceKind::Knight => knights[piece.player as usize] += 1,
-                CrownfallPieceKind::Spy => spies[piece.player as usize] += 1,
+            match piece.kind() {
+                CrownfallPieceKind::Knight => knights[piece.player() as usize] += 1,
+                CrownfallPieceKind::Spy => spies[piece.player() as usize] += 1,
                 _ => {}
             }
         }
@@ -752,14 +789,14 @@ impl CrownfallBoardState {
         let mut attackers = [0u8; 7];
         let mut len = 0;
         for &neighbour in tables::ortho(variant, target.to_index()) {
-            if matches!(self.cells()[neighbour as usize], Some(piece) if piece.player == attacker && piece.kind != CrownfallPieceKind::Knight)
+            if matches!(self.cells()[neighbour as usize], Some(piece) if piece.player() == attacker && piece.kind() != CrownfallPieceKind::Knight)
             {
                 attackers[len] = neighbour;
                 len += 1;
             }
         }
         for &neighbour in self.knight_capture_shape(attacker.opposite(), target.to_index(), rules) {
-            if matches!(self.cells()[neighbour as usize], Some(piece) if piece.player == attacker && piece.kind == CrownfallPieceKind::Knight)
+            if matches!(self.cells()[neighbour as usize], Some(piece) if piece.player() == attacker && piece.kind() == CrownfallPieceKind::Knight)
             {
                 attackers[len] = neighbour;
                 len += 1;
@@ -778,8 +815,8 @@ impl CrownfallBoardState {
         &self,
         attackers: (CrownfallBoardCell, CrownfallBoardCell),
     ) -> Option<CaptureKind> {
-        let a = self.cells()[attackers.0.to_index()]?.kind;
-        let b = self.cells()[attackers.1.to_index()]?.kind;
+        let a = self.cells()[attackers.0.to_index()]?.kind();
+        let b = self.cells()[attackers.1.to_index()]?.kind();
         match (a, b) {
             (CrownfallPieceKind::Spy, CrownfallPieceKind::Spy) => Some(CaptureKind::Spy),
             (CrownfallPieceKind::Knight, CrownfallPieceKind::Knight) => Some(CaptureKind::Knight),
@@ -810,14 +847,14 @@ impl CrownfallBoardState {
         let mut attackers = [0u8; 5];
         let mut len = 0;
         for &neighbour in tables::ortho(variant, target.to_index()) {
-            if matches!(self.cells()[neighbour as usize], Some(piece) if piece.player == attacker) {
+            if matches!(self.cells()[neighbour as usize], Some(piece) if piece.player() == attacker) {
                 attackers[len] = neighbour;
                 len += 1;
             }
         }
 
         if self.is_capture_landing_spot_of(target, moved, attacker, rules)
-            && matches!(self.cells()[moved.to_index()], Some(piece) if piece.player == attacker && piece.kind == CrownfallPieceKind::Knight)
+            && matches!(self.cells()[moved.to_index()], Some(piece) if piece.player() == attacker && piece.kind() == CrownfallPieceKind::Knight)
         {
             attackers[len] = moved.to_index() as u8;
             len += 1;
@@ -849,7 +886,7 @@ impl CrownfallBoardState {
         rules: CrownfallRules,
     ) -> bool {
         match self.cells()[at.to_index()] {
-            Some(piece) if piece.player == mover && piece.kind != CrownfallPieceKind::Crown => {
+            Some(piece) if piece.player() == mover && piece.kind() != CrownfallPieceKind::Crown => {
                 self.find_attacking_pair(at, mover.opposite(), rules)
                     .map(|(_, kind)| kind)
                     == Some(CaptureKind::Spy)
@@ -869,7 +906,7 @@ impl CrownfallBoardState {
         rules: CrownfallRules,
     ) -> bool {
         match self.cells()[at.to_index()] {
-            Some(piece) if piece.player == mover && piece.kind == CrownfallPieceKind::Crown => self
+            Some(piece) if piece.player() == mover && piece.kind() == CrownfallPieceKind::Crown => self
                 .find_crown_attacking_pair(at, mover.opposite(), at, rules)
                 .is_some(),
             _ => false,
@@ -893,7 +930,7 @@ impl CrownfallBoardState {
             cells[len] = neighbour;
             len += 1;
         }
-        if matches!(self.cells()[to.to_index()], Some(piece) if piece.kind == CrownfallPieceKind::Knight)
+        if matches!(self.cells()[to.to_index()], Some(piece) if piece.kind() == CrownfallPieceKind::Knight)
         {
             for &cell in self.knight_capture_shape(mover, to.to_index(), rules) {
                 if !cells[..len].contains(&cell) {
@@ -920,7 +957,7 @@ impl CrownfallBoardState {
         rules: CrownfallRules,
     ) -> bool {
         match self.cells()[to.to_index()] {
-            Some(piece) if piece.kind == CrownfallPieceKind::Knight => {
+            Some(piece) if piece.kind() == CrownfallPieceKind::Knight => {
                 self.is_capture_landing_spot_of(target, to, attacker, rules)
             }
             _ => true,
@@ -938,7 +975,7 @@ impl CrownfallBoardState {
             let Some(piece) = self.cells()[index as usize] else {
                 continue;
             };
-            if piece.player == attacker || piece.kind != CrownfallPieceKind::Crown {
+            if piece.player() == attacker || piece.kind() != CrownfallPieceKind::Crown {
                 continue;
             }
             let neighbour = CrownfallBoardCell::new_index(index as usize);
@@ -973,7 +1010,7 @@ impl CrownfallBoardState {
             let Some(piece) = self.cells()[index as usize] else {
                 continue;
             };
-            if piece.player == attacker || piece.kind == CrownfallPieceKind::Crown {
+            if piece.player() == attacker || piece.kind() == CrownfallPieceKind::Crown {
                 continue;
             }
             let target = CrownfallBoardCell::new_index(index as usize);
@@ -1014,11 +1051,11 @@ impl CrownfallBoardState {
             let Some(piece) = self.cells()[index as usize] else {
                 continue;
             };
-            if piece.player == attacker || piece.kind == CrownfallPieceKind::Crown {
+            if piece.player() == attacker || piece.kind() == CrownfallPieceKind::Crown {
                 continue;
             }
             let ally = tables::ortho(variant, index as usize).iter().find(|&&n| {
-                matches!(self.cells()[n as usize], Some(p) if p.player == attacker && p.kind != CrownfallPieceKind::Archer)
+                matches!(self.cells()[n as usize], Some(p) if p.player() == attacker && p.kind() != CrownfallPieceKind::Archer)
             });
             if let Some(&ally) = ally {
                 captures[count] = (
@@ -1034,17 +1071,21 @@ impl CrownfallBoardState {
     /// A player is only out of the fight once both their Knights and Spies are
     /// depleted - Spy Capture works independently of Knights, so holding
     /// spies alone is still a real offensive threat (README "Losing the
-    /// Game" - Attrition). Archers don't factor into attrition.
-    fn is_attrition_defeated(&self, player: CrownfallPlayerKind) -> bool {
-        let (knights, spies) = self.knight_spy_counts();
+    /// Game" - Attrition). Archers don't factor into attrition. Takes the
+    /// counts from a `knight_spy_counts` pass the caller already made, so
+    /// `resolve_after_removal` scans the board once for both end conditions.
+    fn is_attrition_defeated(
+        knights: &[u16; 2],
+        spies: &[u16; 2],
+        player: CrownfallPlayerKind,
+    ) -> bool {
         knights[player as usize] <= 1 && spies[player as usize] <= 1
     }
 
     /// True when a Knight Capture has left one player with a single knight and
     /// the other with none - the exchange that caused it hit both sides at once,
     /// so neither is credited with an attrition win; the game is a draw instead.
-    fn is_mutual_knight_exhaustion(&self) -> bool {
-        let (knights, _) = self.knight_spy_counts();
+    fn is_mutual_knight_exhaustion(knights: &[u16; 2]) -> bool {
         matches!(
             (
                 knights[CrownfallPlayerKind::White as usize],
@@ -1070,7 +1111,7 @@ impl CrownfallBoardState {
         let mut scratch = *self;
         for (index, cell) in self.cells().iter().enumerate() {
             let Some(piece) = cell else { continue };
-            if piece.player != player {
+            if piece.player() != player {
                 continue;
             }
             let from = CrownfallBoardCell::new_index(index);
@@ -1081,7 +1122,7 @@ impl CrownfallBoardState {
                 let to = CrownfallBoardCell::new_index(dest as usize);
                 scratch.cells_mut()[index] = None;
                 scratch.cells_mut()[dest as usize] = Some(*piece);
-                let captures = scratch.move_captures_something(to, player, piece.kind, rules);
+                let captures = scratch.move_captures_something(to, player, piece.kind(), rules);
                 scratch.cells_mut()[dest as usize] = None;
                 scratch.cells_mut()[index] = Some(*piece);
                 if captures {
@@ -1152,24 +1193,32 @@ impl CrownfallGame {
         &mut self,
         action: CrownfallPlayerAction,
     ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
-        self.apply_action_with_logging(action, true)
+        self.apply_action_with_logging(action, true, true)
     }
 
     /// Applies `action` without logging the move/capture, used by the AI's search
     /// (`ai::best_move`/`negamax`) to explore candidate positions - those simulated
     /// moves aren't real turns and would otherwise drown out actual gameplay in the
     /// log (see `game::ai`, which calls this instead of `apply_action`).
+    ///
+    /// Also skips re-validating `rules.mandatory_capture`: the AI only ever
+    /// applies moves from `ai::collect_moves`, which has already filtered the
+    /// list down to capturing moves (using the same `move_captures_something`
+    /// machinery `apply_move` would re-run) whenever any exist - so the
+    /// re-check could never fail, and it costs a full own-moves capture scan
+    /// per quiet move applied.
     pub(crate) fn apply_action_quiet(
         &mut self,
         action: CrownfallPlayerAction,
     ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
-        self.apply_action_with_logging(action, false)
+        self.apply_action_with_logging(action, false, false)
     }
 
     fn apply_action_with_logging(
         &mut self,
         action: CrownfallPlayerAction,
         log_moves: bool,
+        validate_mandatory_capture: bool,
     ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
         match &self.state {
             CrownfallGameState::Playing(play_state) => {
@@ -1184,7 +1233,7 @@ impl CrownfallGame {
         }
         match action {
             CrownfallPlayerAction::Move { player, from, to } => {
-                self.apply_move(player, from, to, log_moves)
+                self.apply_move(player, from, to, log_moves, validate_mandatory_capture)
             }
             CrownfallPlayerAction::KnightRemoval { player, at } => {
                 self.apply_knight_removal(player, at)
@@ -1203,6 +1252,7 @@ impl CrownfallGame {
         from: CrownfallBoardCell,
         to: CrownfallBoardCell,
         log_moves: bool,
+        validate_mandatory_capture: bool,
     ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
         let from_index = from.to_index();
         let to_index = to.to_index();
@@ -1218,7 +1268,7 @@ impl CrownfallGame {
         }
         let piece =
             self.board.cells()[from_index].ok_or(CrownfallError::EmptyMove(player, from))?;
-        if piece.player != player {
+        if piece.player() != player {
             return Err(CrownfallError::EnemyMove(player, from));
         }
         if self.board.cells()[to_index].is_some()
@@ -1235,12 +1285,12 @@ impl CrownfallGame {
         } else {
             false
         };
-        if must_capture_rule_enabled {
+        if must_capture_rule_enabled && validate_mandatory_capture {
             let mut scratch = self.board;
             scratch.cells_mut()[from_index] = None;
             scratch.cells_mut()[to_index] = Some(piece);
             let this_move_captures =
-                scratch.move_captures_something(to, player, piece.kind, self.rules);
+                scratch.move_captures_something(to, player, piece.kind(), self.rules);
             if !this_move_captures && self.board.has_available_capture(player, self.rules) {
                 return Err(CrownfallError::CaptureRequired(player));
             }
@@ -1248,9 +1298,14 @@ impl CrownfallGame {
 
         #[cfg(feature = "log")]
         if log_moves {
-            log::info!("{player:?} moves {:?} from {from:?} to {to:?}", piece.kind);
+            log::info!("{player:?} moves {:?} from {from:?} to {to:?}", piece.kind());
         }
 
+        // The move's own contribution to the incremental position hash -
+        // capture resolution below folds any removals into this as they
+        // happen (see `resolve_continuation`/`remove_piece`).
+        let mut hash_delta =
+            hash::piece_key(from_index, piece) ^ hash::piece_key(to_index, piece);
         self.board.cells_mut()[from_index] = None;
         self.board.cells_mut()[to_index] = Some(piece);
 
@@ -1278,9 +1333,9 @@ impl CrownfallGame {
             false
         };
         if all_captures_processed_enabled {
-            self.apply_move_all_captures_processed(player, from, to, piece, log_moves)
+            self.apply_move_all_captures_processed(player, from, to, piece, log_moves, &mut hash_delta)
         } else {
-            self.apply_move_sequential(player, from, to, piece, log_moves)
+            self.apply_move_sequential(player, from, to, piece, log_moves, &mut hash_delta)
         }
     }
 
@@ -1293,6 +1348,7 @@ impl CrownfallGame {
         to: CrownfallBoardCell,
         piece: CrownfallPiece,
         log_moves: bool,
+        hash_delta: &mut u64,
     ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
         let to_index = to.to_index();
 
@@ -1315,16 +1371,16 @@ impl CrownfallGame {
         // Spy Capture applies "even if the enemy moved there" - the piece just moved
         // can walk straight into a pre-existing enemy Spy pincer and be captured by it.
         if self.board.check_self_spy_trap(to, player, self.rules) {
-            self.board.cells_mut()[to_index] = None;
+            remove_piece(&mut self.board, to_index, hash_delta);
             #[cfg(feature = "log")]
             if log_moves {
-                log::info!("captured: {player:?} {:?} at {to:?}", piece.kind);
+                log::info!("captured: {player:?} {:?} at {to:?}", piece.kind());
             }
             let attackers = self
                 .board
                 .find_attacking_pair(to, player.opposite(), self.rules)
                 .expect("check_self_spy_trap confirmed an attacking pair");
-            self.state = self.resolve_after_removal(player, true);
+            self.state = self.resolve_after_removal(player, true, *hash_delta);
             return Ok(Some(CrownfallTurnResult::Capture {
                 player,
                 last_move_from: from,
@@ -1335,7 +1391,7 @@ impl CrownfallGame {
         }
 
         let (captures, capture_count) = self.board.check_piece_captures(to, player, self.rules);
-        let (archer_captures, archer_count) = if piece.kind == CrownfallPieceKind::Archer {
+        let (archer_captures, archer_count) = if piece.kind() == CrownfallPieceKind::Archer {
             self.board.check_archer_capture(to, player)
         } else {
             (
@@ -1355,8 +1411,9 @@ impl CrownfallGame {
                 to,
                 piece,
                 log_moves,
+                hash_delta,
             );
-            self.state = self.resolve_after_removal(player, true);
+            self.state = self.resolve_after_removal(player, true, *hash_delta);
             return Ok(Some(turn_result));
         }
 
@@ -1367,8 +1424,9 @@ impl CrownfallGame {
                 from,
                 to,
                 log_moves,
+                hash_delta,
             );
-            self.state = self.resolve_after_removal(player, true);
+            self.state = self.resolve_after_removal(player, true, *hash_delta);
             return Ok(Some(turn_result));
         }
 
@@ -1379,6 +1437,7 @@ impl CrownfallGame {
             &mut self.history,
             &mut self.moves_since_capture,
             false,
+            *hash_delta,
         );
         Ok(Some(CrownfallTurnResult::PieceMove { player, from, to }))
     }
@@ -1397,6 +1456,7 @@ impl CrownfallGame {
         to: CrownfallBoardCell,
         piece: CrownfallPiece,
         log_moves: bool,
+        hash_delta: &mut u64,
     ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
         let to_index = to.to_index();
         let snapshot = self.board;
@@ -1404,7 +1464,7 @@ impl CrownfallGame {
         let crown_capture = snapshot.check_crown_capture(to, player, self.rules);
         let self_trapped = snapshot.check_self_spy_trap(to, player, self.rules);
         let (captures, capture_count) = snapshot.check_piece_captures(to, player, self.rules);
-        let (archer_captures, archer_count) = if piece.kind == CrownfallPieceKind::Archer {
+        let (archer_captures, archer_count) = if piece.kind() == CrownfallPieceKind::Archer {
             snapshot.check_archer_capture(to, player)
         } else {
             (
@@ -1436,10 +1496,10 @@ impl CrownfallGame {
         }
 
         if self_trapped {
-            self.board.cells_mut()[to_index] = None;
+            remove_piece(&mut self.board, to_index, hash_delta);
             #[cfg(feature = "log")]
             if log_moves {
-                log::info!("captured: {player:?} {:?} at {to:?}", piece.kind);
+                log::info!("captured: {player:?} {:?} at {to:?}", piece.kind());
             }
             let attackers = snapshot
                 .find_attacking_pair(to, player.opposite(), self.rules)
@@ -1462,6 +1522,7 @@ impl CrownfallGame {
                 to,
                 piece,
                 log_moves,
+                hash_delta,
             );
             any_capture = true;
             turn_result.get_or_insert(result);
@@ -1474,6 +1535,7 @@ impl CrownfallGame {
                 from,
                 to,
                 log_moves,
+                hash_delta,
             );
             any_capture = true;
             turn_result.get_or_insert(result);
@@ -1487,7 +1549,7 @@ impl CrownfallGame {
         }
 
         if any_capture {
-            self.state = self.resolve_after_removal(player, true);
+            self.state = self.resolve_after_removal(player, true, *hash_delta);
             return Ok(turn_result);
         }
 
@@ -1498,6 +1560,7 @@ impl CrownfallGame {
             &mut self.history,
             &mut self.moves_since_capture,
             false,
+            *hash_delta,
         );
         Ok(Some(CrownfallTurnResult::PieceMove { player, from, to }))
     }
@@ -1507,6 +1570,9 @@ impl CrownfallGame {
     /// the `TurnResult` for the first capture found (matching the existing
     /// single-result-per-move reporting shape).
     #[cfg_attr(not(feature = "log"), allow(unused_variables))]
+    // Private helper threading one move's context through; a params struct
+    // would just rename the same eight things.
+    #[allow(clippy::too_many_arguments)]
     fn apply_piece_captures(
         &mut self,
         captures: &[PieceCapture],
@@ -1515,12 +1581,12 @@ impl CrownfallGame {
         to: CrownfallBoardCell,
         piece: CrownfallPiece,
         log_moves: bool,
+        hash_delta: &mut u64,
     ) -> CrownfallTurnResult {
         let mut turn_result = None;
         for capture in captures {
-            let target_kind =
-                self.board.cells()[capture.target.to_index()].map(|target_piece| target_piece.kind);
-            self.board.cells_mut()[capture.target.to_index()] = None;
+            let target_kind = remove_piece(&mut self.board, capture.target.to_index(), hash_delta)
+                .map(|target_piece| target_piece.kind());
             #[cfg(feature = "log")]
             if log_moves {
                 log::info!(
@@ -1537,12 +1603,12 @@ impl CrownfallGame {
             if capture.kind == CaptureKind::Knight
                 && target_kind == Some(CrownfallPieceKind::Knight)
             {
-                let lost_knight = if piece.kind == CrownfallPieceKind::Crown {
+                let lost_knight = if piece.kind() == CrownfallPieceKind::Crown {
                     second_attacker
                 } else {
                     to
                 };
-                self.board.cells_mut()[lost_knight.to_index()] = None;
+                remove_piece(&mut self.board, lost_knight.to_index(), hash_delta);
                 #[cfg(feature = "log")]
                 if log_moves {
                     log::info!("captured: {player:?} Knight at {lost_knight:?}");
@@ -1570,11 +1636,12 @@ impl CrownfallGame {
         from: CrownfallBoardCell,
         to: CrownfallBoardCell,
         log_moves: bool,
+        hash_delta: &mut u64,
     ) -> CrownfallTurnResult {
         let mut turn_result = None;
         for &(target, ally) in captures {
-            let target_kind = self.board.cells()[target.to_index()].map(|p| p.kind);
-            self.board.cells_mut()[target.to_index()] = None;
+            let target_kind =
+                remove_piece(&mut self.board, target.to_index(), hash_delta).map(|p| p.kind());
             #[cfg(feature = "log")]
             if log_moves {
                 log::info!(
@@ -1604,10 +1671,13 @@ impl CrownfallGame {
         &mut self,
         player: CrownfallPlayerKind,
         captured: bool,
+        hash_delta: u64,
     ) -> CrownfallGameState {
-        if self.board.is_mutual_knight_exhaustion() {
+        // One counting pass serves both end-condition checks.
+        let (knights, spies) = self.board.knight_spy_counts();
+        if CrownfallBoardState::is_mutual_knight_exhaustion(&knights) {
             CrownfallGameState::Draw(DrawReason::MutualKnightExhaustion)
-        } else if self.board.is_attrition_defeated(player.opposite()) {
+        } else if CrownfallBoardState::is_attrition_defeated(&knights, &spies, player.opposite()) {
             CrownfallGameState::Victory(player)
         } else {
             resolve_continuation(
@@ -1617,6 +1687,7 @@ impl CrownfallGame {
                 &mut self.history,
                 &mut self.moves_since_capture,
                 captured,
+                hash_delta,
             )
         }
     }
@@ -1633,8 +1704,9 @@ impl CrownfallGame {
         match self.board.cells()[at.to_index()] {
             None => Err(CrownfallError::EmptyKnightRemoval(player, at)),
             Some(cell) => {
-                if cell.player == player {
-                    self.board.cells_mut()[at.index] = None;
+                if cell.player() == player {
+                    let mut hash_delta = 0;
+                    remove_piece(&mut self.board, at.to_index(), &mut hash_delta);
                     self.state = resolve_continuation(
                         &self.board,
                         self.rules.board,
@@ -1642,6 +1714,7 @@ impl CrownfallGame {
                         &mut self.history,
                         &mut self.moves_since_capture,
                         true,
+                        hash_delta,
                     );
                     Ok(None)
                 } else {
@@ -1696,6 +1769,59 @@ impl CrownfallPieceKind {
             CrownfallPieceKind::Knight => "Knight",
             CrownfallPieceKind::Spy => "Spy",
             CrownfallPieceKind::Archer => "Archer",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai;
+
+    /// Plays AI self-play games and asserts that every incrementally
+    /// maintained history hash (see `resolve_continuation`) matches a full
+    /// `position_hash` recompute of the board it describes. Depth-2 self-play
+    /// reliably reaches ordinary captures, Knight sacrifices, spy traps and
+    /// Archer shots, which are exactly the code paths that fold removals
+    /// into the hash delta.
+    fn assert_hash_parity_over_selfplay(rules: CrownfallRules) {
+        let mut game = CrownfallGame::new(rules);
+        for _ in 0..80 {
+            let CrownfallGameState::Playing(play_state) = game.state else {
+                break;
+            };
+            let player = play_state.player();
+            let Some(action) =
+                ai::best_move(&game, player, 2, ai::CrownfallPersonality::Aggressive)
+            else {
+                break;
+            };
+            let history_len = game.history.len();
+            game.apply_action(action).expect("AI produces legal moves");
+            if game.history.len() > history_len {
+                assert_eq!(
+                    *game.history.last().unwrap(),
+                    position_hash(&game.board, player.opposite()),
+                    "incremental hash diverged from full recompute under {rules:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn incremental_hash_matches_full_recompute() {
+        for rules in [
+            CrownfallRules::standard(),
+            CrownfallRules::mini(),
+            CrownfallRules::grand(),
+            CrownfallRules::standard_archers(),
+            CrownfallRules::mini_archers(),
+            CrownfallRules::grand_archers(),
+            CrownfallRules::standard_mandatory_capture(),
+            CrownfallRules::standard_all_captures_processed(),
+            CrownfallRules::standard_diagonal_knights(),
+        ] {
+            assert_hash_parity_over_selfplay(rules);
         }
     }
 }
