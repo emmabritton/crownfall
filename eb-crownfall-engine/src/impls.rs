@@ -46,12 +46,39 @@ const REPETITION_LIMIT: usize = 3;
 
 /// Turns without a capture before the no-progress draw rule fires (chess's
 /// 50-move rule, adapted - Crownfall has no pawn-equivalent, so "no capture"
-/// is the sole progress signal).
+/// is the sole progress signal). This is the `Normal` board's value - `Mini`
+/// halves it and `Grand` doubles it (see `CrownfallBoardVariant::no_progress_limit`),
+/// since a smaller/larger board reaches a stale position proportionally sooner/later.
 const NO_PROGRESS_LIMIT: u16 = 40;
 
 /// Absolute turn-count safety net: the game is drawn if it's still going
-/// after this many turns, regardless of repetition or progress.
+/// after this many turns, regardless of repetition or progress. This is the
+/// `Normal` board's value - `Mini` halves it and `Grand` doubles it (see
+/// `CrownfallBoardVariant::total_turn_limit`).
 const TOTAL_TURN_LIMIT: u16 = 200;
+
+impl CrownfallBoardVariant {
+    /// Turns without a capture before the no-progress draw rule fires,
+    /// scaled to board size - `Mini` at half `NO_PROGRESS_LIMIT`, `Normal`
+    /// at the base value, `Grand` at double.
+    fn no_progress_limit(self) -> u16 {
+        match self {
+            CrownfallBoardVariant::Mini => NO_PROGRESS_LIMIT / 2,
+            CrownfallBoardVariant::Normal => NO_PROGRESS_LIMIT,
+            CrownfallBoardVariant::Grand => NO_PROGRESS_LIMIT * 2,
+        }
+    }
+
+    /// Absolute turn-count safety net, scaled to board size - `Mini` at half
+    /// `TOTAL_TURN_LIMIT`, `Normal` at the base value, `Grand` at double.
+    fn total_turn_limit(self) -> u16 {
+        match self {
+            CrownfallBoardVariant::Mini => TOTAL_TURN_LIMIT / 2,
+            CrownfallBoardVariant::Normal => TOTAL_TURN_LIMIT,
+            CrownfallBoardVariant::Grand => TOTAL_TURN_LIMIT * 2,
+        }
+    }
+}
 
 /// Records the position that's about to be played from and returns the
 /// resulting `GameState` - `Draw` if this exact position has now recurred
@@ -60,6 +87,7 @@ const TOTAL_TURN_LIMIT: u16 = 200;
 /// total; otherwise `Playing` with `next_player` to move.
 fn resolve_continuation(
     board: &CrownfallBoardState,
+    board_variant: CrownfallBoardVariant,
     next_player: CrownfallPlayerKind,
     history: &mut Vec<u64>,
     moves_since_capture: &mut u16,
@@ -89,9 +117,9 @@ fn resolve_continuation(
 
     if repeats >= REPETITION_LIMIT {
         CrownfallGameState::Draw(DrawReason::Repetition)
-    } else if *moves_since_capture >= NO_PROGRESS_LIMIT {
+    } else if *moves_since_capture >= board_variant.no_progress_limit() {
         CrownfallGameState::Draw(DrawReason::NoProgress)
-    } else if turns_played >= TOTAL_TURN_LIMIT {
+    } else if turns_played >= board_variant.total_turn_limit() {
         CrownfallGameState::Draw(DrawReason::TurnLimit)
     } else {
         CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
@@ -1066,17 +1094,20 @@ impl CrownfallBoardState {
 }
 
 impl CrownfallGame {
-    /// Turns remaining before the `TOTAL_TURN_LIMIT` safety-net draw fires,
+    /// Turns remaining before the board's turn-limit safety-net draw fires,
     /// regardless of repetition or recent captures.
     pub fn turns_remaining(&self) -> u16 {
         let turns_played = (self.history.len() - 1) as u16;
-        TOTAL_TURN_LIMIT.saturating_sub(turns_played)
+        self.rules.board.total_turn_limit().saturating_sub(turns_played)
     }
 
     /// Turns remaining before the no-progress draw fires if no capture
     /// happens in the meantime (chess's 50-move rule, adapted).
     pub fn turns_remaining_before_no_progress_draw(&self) -> u16 {
-        NO_PROGRESS_LIMIT.saturating_sub(self.moves_since_capture)
+        self.rules
+            .board
+            .no_progress_limit()
+            .saturating_sub(self.moves_since_capture)
     }
 
     pub fn handle_player_action(
@@ -1319,6 +1350,7 @@ impl CrownfallGame {
 
         self.state = resolve_continuation(
             &self.board,
+            self.rules.board,
             player.opposite(),
             &mut self.history,
             &mut self.moves_since_capture,
@@ -1437,6 +1469,7 @@ impl CrownfallGame {
 
         self.state = resolve_continuation(
             &self.board,
+            self.rules.board,
             player.opposite(),
             &mut self.history,
             &mut self.moves_since_capture,
@@ -1555,6 +1588,7 @@ impl CrownfallGame {
         } else {
             resolve_continuation(
                 &self.board,
+                self.rules.board,
                 player.opposite(),
                 &mut self.history,
                 &mut self.moves_since_capture,
@@ -1579,6 +1613,7 @@ impl CrownfallGame {
                     self.board.cells_mut()[at.index] = None;
                     self.state = resolve_continuation(
                         &self.board,
+                        self.rules.board,
                         player.opposite(),
                         &mut self.history,
                         &mut self.moves_since_capture,

@@ -137,6 +137,102 @@ fn grand_board_movement_and_capture_still_work() {
 }
 
 // ---------------------------------------------------------------------
+// Board-scaled draw limits (Mini at half, Grand at double the Normal
+// board's NO_PROGRESS_LIMIT/TOTAL_TURN_LIMIT)
+// ---------------------------------------------------------------------
+
+#[test]
+fn mini_no_progress_draw_fires_at_half_the_normal_limit() {
+    let mut board = CrownfallBoardState::empty(CrownfallBoardVariant::Mini);
+    place(&mut board, 0, 0, Spy, White);
+    place(&mut board, 4, 4, Spy, Black);
+    let mut game = game_with(board, White, CrownfallRules::mini());
+    game.moves_since_capture = 19;
+
+    mv(&mut game, White, (0, 0), (1, 0)).unwrap();
+    assert_eq!(game.moves_since_capture, 20);
+    assert_eq!(game.state, CrownfallGameState::Draw(DrawReason::NoProgress));
+}
+
+#[test]
+fn mini_no_progress_draw_does_not_fire_early() {
+    let mut board = CrownfallBoardState::empty(CrownfallBoardVariant::Mini);
+    place(&mut board, 0, 0, Spy, White);
+    place(&mut board, 4, 4, Spy, Black);
+    let mut game = game_with(board, White, CrownfallRules::mini());
+    game.moves_since_capture = 18;
+
+    mv(&mut game, White, (0, 0), (1, 0)).unwrap();
+    assert_eq!(game.moves_since_capture, 19);
+    assert!(matches!(game.state, CrownfallGameState::Playing(_)));
+}
+
+#[test]
+fn grand_no_progress_draw_fires_at_double_the_normal_limit() {
+    let mut board = CrownfallBoardState::empty(CrownfallBoardVariant::Grand);
+    place(&mut board, 0, 0, Spy, White);
+    place(&mut board, 8, 8, Spy, Black);
+    let mut game = game_with(board, White, CrownfallRules::grand());
+    game.moves_since_capture = 79;
+
+    mv(&mut game, White, (0, 0), (1, 0)).unwrap();
+    assert_eq!(game.moves_since_capture, 80);
+    assert_eq!(game.state, CrownfallGameState::Draw(DrawReason::NoProgress));
+}
+
+#[test]
+fn grand_no_progress_draw_does_not_fire_early() {
+    let mut board = CrownfallBoardState::empty(CrownfallBoardVariant::Grand);
+    place(&mut board, 0, 0, Spy, White);
+    place(&mut board, 8, 8, Spy, Black);
+    let mut game = game_with(board, White, CrownfallRules::grand());
+    game.moves_since_capture = 78;
+
+    mv(&mut game, White, (0, 0), (1, 0)).unwrap();
+    assert_eq!(game.moves_since_capture, 79);
+    assert!(matches!(game.state, CrownfallGameState::Playing(_)));
+}
+
+#[test]
+fn mini_turn_limit_draw_fires_at_half_the_normal_limit() {
+    let mut board = CrownfallBoardState::empty(CrownfallBoardVariant::Mini);
+    place(&mut board, 0, 0, Spy, White);
+    place(&mut board, 4, 4, Spy, Black);
+    let mut game = game_with(board, White, CrownfallRules::mini());
+    game.history = vec![0u64; 100];
+
+    mv(&mut game, White, (0, 0), (1, 0)).unwrap();
+    assert_eq!(game.state, CrownfallGameState::Draw(DrawReason::TurnLimit));
+}
+
+#[test]
+fn grand_turn_limit_draw_fires_at_double_the_normal_limit() {
+    let mut board = CrownfallBoardState::empty(CrownfallBoardVariant::Grand);
+    place(&mut board, 0, 0, Spy, White);
+    place(&mut board, 8, 8, Spy, Black);
+    let mut game = game_with(board, White, CrownfallRules::grand());
+    game.history = vec![0u64; 400];
+
+    mv(&mut game, White, (0, 0), (1, 0)).unwrap();
+    assert_eq!(game.state, CrownfallGameState::Draw(DrawReason::TurnLimit));
+}
+
+#[test]
+fn turns_remaining_scales_with_board_variant() {
+    let mini = CrownfallGame::new(CrownfallRules::mini());
+    assert_eq!(mini.turns_remaining(), 100);
+    assert_eq!(mini.turns_remaining_before_no_progress_draw(), 20);
+
+    let normal = CrownfallGame::new(CrownfallRules::standard());
+    assert_eq!(normal.turns_remaining(), 200);
+    assert_eq!(normal.turns_remaining_before_no_progress_draw(), 40);
+
+    let grand = CrownfallGame::new(CrownfallRules::grand());
+    assert_eq!(grand.turns_remaining(), 400);
+    assert_eq!(grand.turns_remaining_before_no_progress_draw(), 80);
+}
+
+// ---------------------------------------------------------------------
 // Archer
 // ---------------------------------------------------------------------
 
