@@ -349,13 +349,12 @@ fn attrition_triggers_once_both_knights_and_spies_are_depleted() {
 }
 
 #[test]
-fn mutual_knight_exhaustion_from_the_same_capture_is_a_draw() {
+fn knight_capture_leaving_one_knight_each_side_from_the_same_capture() {
     // Black holds only one knight; White captures it with a Knight+Knight
     // pincer, but per the Knight Capture rule the attacker must also give up
     // one of their own knights since the captured piece was a Knight. That
-    // leaves White with one knight and Black with none — a mutual attrition
-    // hit from the very same move, which should be ruled a draw rather than
-    // an outright win for whichever side still has a knight.
+    // leaves White with one knight and Black with none — with no spies on
+    // the board either, this is an ordinary attrition win for White.
     let mut board = empty_board();
     board.cells_mut()[24] = Some(CrownfallPiece::new(
         CrownfallPieceKind::Knight,
@@ -390,8 +389,8 @@ fn mutual_knight_exhaustion_from_the_same_capture_is_a_draw() {
 
     assert_eq!(
         game.state,
-        CrownfallGameState::Draw(DrawReason::MutualKnightExhaustion),
-        "White ends with one knight and Black with none from the same capture — a draw, not a White win"
+        CrownfallGameState::Victory(CrownfallPlayerKind::White, WinReason::Attrition),
+        "White ends with one knight and Black with none, both with no spies — an attrition win for White"
     );
 }
 

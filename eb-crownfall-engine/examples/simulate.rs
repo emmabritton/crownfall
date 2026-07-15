@@ -65,7 +65,6 @@ enum Reason {
     Repetition,
     NoProgress,
     TurnLimit,
-    MutualKnightExhaustion,
 }
 
 impl From<WinReason> for Reason {
@@ -84,7 +83,6 @@ impl From<DrawReason> for Reason {
             DrawReason::Repetition => Reason::Repetition,
             DrawReason::NoProgress => Reason::NoProgress,
             DrawReason::TurnLimit => Reason::TurnLimit,
-            DrawReason::MutualKnightExhaustion => Reason::MutualKnightExhaustion,
         }
     }
 }
@@ -186,7 +184,6 @@ struct BatchStats {
     repetitions: usize,
     no_progress: usize,
     turn_limits: usize,
-    mutual_knight_exhaustions: usize,
     total_turns: usize,
     min_turns: usize,
     max_turns: usize,
@@ -206,7 +203,6 @@ impl BatchStats {
             repetitions: 0,
             no_progress: 0,
             turn_limits: 0,
-            mutual_knight_exhaustions: 0,
             total_turns: 0,
             min_turns: usize::MAX,
             max_turns: 0,
@@ -230,7 +226,6 @@ impl BatchStats {
             Reason::Repetition => self.repetitions += 1,
             Reason::NoProgress => self.no_progress += 1,
             Reason::TurnLimit => self.turn_limits += 1,
-            Reason::MutualKnightExhaustion => self.mutual_knight_exhaustions += 1,
         }
     }
 
@@ -247,7 +242,7 @@ impl BatchStats {
             100.0 * self.draws as f64 / g
         );
         println!(
-            "  Ended by: crown capture {} ({:.1}%), attrition {} ({:.1}%), surrender {} ({:.1}%), repetition {} ({:.1}%), no progress {} ({:.1}%), turn limit {} ({:.1}%), mutual knight exhaustion {} ({:.1}%)",
+            "  Ended by: crown capture {} ({:.1}%), attrition {} ({:.1}%), surrender {} ({:.1}%), repetition {} ({:.1}%), no progress {} ({:.1}%), turn limit {} ({:.1}%)",
             self.crown_captures,
             100.0 * self.crown_captures as f64 / g,
             self.attritions,
@@ -259,9 +254,7 @@ impl BatchStats {
             self.no_progress,
             100.0 * self.no_progress as f64 / g,
             self.turn_limits,
-            100.0 * self.turn_limits as f64 / g,
-            self.mutual_knight_exhaustions,
-            100.0 * self.mutual_knight_exhaustions as f64 / g
+            100.0 * self.turn_limits as f64 / g
         );
         println!(
             "  Turns: avg {:.1}, min {}, max {}",

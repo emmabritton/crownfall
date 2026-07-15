@@ -751,10 +751,9 @@ impl CrownfallBoardState {
 
     /// Knight and Spy counts for both players in a single board pass -
     /// `([white_knights, black_knights], [white_spies, black_spies])`. The
-    /// end-of-turn checks (`is_mutual_knight_exhaustion`,
-    /// `is_attrition_defeated`) only need these four numbers, and they run
-    /// after every capture including AI-search nodes, so one pass beats one
-    /// full scan per (player, kind) pair.
+    /// end-of-turn `is_attrition_defeated` check only needs these four
+    /// numbers, and it runs after every capture including AI-search nodes,
+    /// so one pass beats one full scan per (player, kind) pair.
     fn knight_spy_counts(&self) -> ([u16; 2], [u16; 2]) {
         let mut knights = [0u16; 2];
         let mut spies = [0u16; 2];
@@ -1095,27 +1094,13 @@ impl CrownfallBoardState {
     /// depleted - Spy Capture works independently of Knights, so holding
     /// spies alone is still a real offensive threat (README "Losing the
     /// Game" - Attrition). Archers don't factor into attrition. Takes the
-    /// counts from a `knight_spy_counts` pass the caller already made, so
-    /// `resolve_after_removal` scans the board once for both end conditions.
+    /// counts from a `knight_spy_counts` pass the caller already made.
     fn is_attrition_defeated(
         knights: &[u16; 2],
         spies: &[u16; 2],
         player: CrownfallPlayerKind,
     ) -> bool {
         knights[player as usize] <= 1 && spies[player as usize] <= 1
-    }
-
-    /// True when a Knight Capture has left one player with a single knight and
-    /// the other with none - the exchange that caused it hit both sides at once,
-    /// so neither is credited with an attrition win; the game is a draw instead.
-    fn is_mutual_knight_exhaustion(knights: &[u16; 2]) -> bool {
-        matches!(
-            (
-                knights[CrownfallPlayerKind::White as usize],
-                knights[CrownfallPlayerKind::Black as usize]
-            ),
-            (0, 1) | (1, 0)
-        )
     }
 
     /// True if `player` has at least one legal move this turn that results in
@@ -1737,10 +1722,10 @@ impl CrownfallGame {
     }
 
     /// Shared end-of-turn state resolution after one or more pieces were
-    /// removed this move: mutual knight exhaustion and attrition still take
-    /// priority over an ordinary continuation, exactly as under the
-    /// sequential rules - this variant only changes *which* pieces get
-    /// removed, not the priority of the resulting `GameState`.
+    /// removed this move: attrition still takes priority over an ordinary
+    /// continuation, exactly as under the sequential rules - this variant
+    /// only changes *which* pieces get removed, not the priority of the
+    /// resulting `GameState`.
     ///
     /// Attrition is skipped entirely under the `Archers` ruleset: it only
     /// counts Knights and Spies, but an Archer-owning side can still capture
@@ -1752,11 +1737,8 @@ impl CrownfallGame {
         captured: bool,
         hash_delta: u64,
     ) -> CrownfallGameState {
-        // One counting pass serves both end-condition checks.
         let (knights, spies) = self.board.knight_spy_counts();
-        if CrownfallBoardState::is_mutual_knight_exhaustion(&knights) {
-            CrownfallGameState::Draw(DrawReason::MutualKnightExhaustion)
-        } else if !self.rules.has_archers()
+        if !self.rules.has_archers()
             && CrownfallBoardState::is_attrition_defeated(&knights, &spies, player.opposite())
         {
             CrownfallGameState::Victory(player, WinReason::Attrition)

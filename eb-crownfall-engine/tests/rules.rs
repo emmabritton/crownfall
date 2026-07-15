@@ -787,9 +787,12 @@ fn no_attrition_defeat_while_above_the_threshold() {
 }
 
 #[test]
-fn mutual_knight_exhaustion_is_a_draw_not_a_win() {
+fn knight_capture_leaving_one_knight_each_side_is_not_a_special_case() {
     // Black's only knight is captured while White sacrifices one of its
     // own two knights to make the capture - white ends with 1, black with 0.
+    // With no spies on the board, black is also out of spies, so this is an
+    // ordinary attrition win for White - there's no separate "mutual knight
+    // exhaustion" draw rule anymore.
     let mut board = empty_board();
     place(&mut board, 3, 3, Knight, Black); // black's only knight
     place(&mut board, 3, 4, Knight, White); // white partner, survives
@@ -805,7 +808,7 @@ fn mutual_knight_exhaustion_is_a_draw_not_a_win() {
     );
     assert_eq!(
         game.state,
-        CrownfallGameState::Draw(DrawReason::MutualKnightExhaustion)
+        CrownfallGameState::Victory(White, WinReason::Attrition)
     );
 }
 
@@ -891,10 +894,6 @@ fn draw_reason_descriptions_are_stable() {
         "no captures for too long"
     );
     assert_eq!(DrawReason::TurnLimit.description(), "turn limit reached");
-    assert_eq!(
-        DrawReason::MutualKnightExhaustion.description(),
-        "both sides out of knights"
-    );
 }
 
 #[test]

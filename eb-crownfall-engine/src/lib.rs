@@ -236,9 +236,6 @@ pub enum DrawReason {
     NoProgress,
     /// The game reached the absolute turn-count safety net.
     TurnLimit,
-    /// A Knight Capture left one player with a single Knight and the other
-    /// with none, both as a result of the same move.
-    MutualKnightExhaustion,
 }
 
 impl DrawReason {
@@ -247,7 +244,6 @@ impl DrawReason {
             DrawReason::Repetition => "threefold repetition",
             DrawReason::NoProgress => "no captures for too long",
             DrawReason::TurnLimit => "turn limit reached",
-            DrawReason::MutualKnightExhaustion => "both sides out of knights",
         }
     }
 }
