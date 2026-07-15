@@ -2,7 +2,8 @@ use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::{BACKGROUND, SceneName, SceneResult};
 use eb_crownfall_engine::ai::{CrownfallDifficulty, CrownfallPersonality, best_move};
 use eb_crownfall_engine::{
-    CrownfallBoardCell, CrownfallGame, CrownfallGameState, CrownfallPiece, CrownfallPlayState, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult,
+    CrownfallBoardCell, CrownfallGame, CrownfallGameState, CrownfallPiece, CrownfallPlayState,
+    CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult,
 };
 use pixels_graphics_lib::MouseData;
 use pixels_graphics_lib::buffer_graphics_lib::Graphics;
@@ -45,7 +46,10 @@ pub struct AiGameScene {
 }
 
 impl AiGameScene {
-    pub fn new(difficulty: CrownfallDifficulty, personality: CrownfallPersonality) -> Box<AiGameScene> {
+    pub fn new(
+        difficulty: CrownfallDifficulty,
+        personality: CrownfallPersonality,
+    ) -> Box<AiGameScene> {
         Box::new(AiGameScene {
             game: CrownfallGame::default(),
             difficulty,
@@ -116,7 +120,9 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
                 continue;
             }
             if let Some(cell) = cell {
-                let xy = self.board_renderer.pos_for(CrownfallBoardCell::new_index(i));
+                let xy = self
+                    .board_renderer
+                    .pos_for(CrownfallBoardCell::new_index(i));
                 let image = self.piece_renderer.image_for_piece(cell);
                 graphics.draw_indexed_image(xy, image);
             }

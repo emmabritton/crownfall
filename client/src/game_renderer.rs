@@ -1,4 +1,6 @@
-use eb_crownfall_engine::{BOARD_LENGTH, CrownfallBoardCell, CrownfallPiece, CrownfallPieceKind, CrownfallPlayerKind};
+use eb_crownfall_engine::{
+    BOARD_LENGTH, CrownfallBoardCell, CrownfallPiece, CrownfallPieceKind, CrownfallPlayerKind,
+};
 use pixels_graphics_lib::prelude::{Coord, Graphics, IndexedImage, coord};
 
 pub const CELL_SIZE: usize = 32;

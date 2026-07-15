@@ -2,7 +2,8 @@ use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::net::{poll, send};
 use crate::{BACKGROUND, HEIGHT, SceneName, SceneResult, WIDTH, username};
 use eb_crownfall_engine::{
-    CrownfallBoardCell, CrownfallGameState, CrownfallPiece, CrownfallPlayState, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult,
+    CrownfallBoardCell, CrownfallGameState, CrownfallPiece, CrownfallPlayState,
+    CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult,
 };
 use networking::models::WebGame;
 use networking::packet::{GameId, NetGameState, Packet, PerformActionState};
@@ -68,7 +69,12 @@ impl GameScene {
 
     /// Begin animating `game`'s incoming update if it was the other player moving
     /// a piece; otherwise apply it immediately.
-    fn apply_update(&mut self, game: WebGame, is_white: bool, turn_result: Option<&CrownfallTurnResult>) {
+    fn apply_update(
+        &mut self,
+        game: WebGame,
+        is_white: bool,
+        turn_result: Option<&CrownfallTurnResult>,
+    ) {
         self.board_renderer.set_flipped(!is_white);
         // A new update arrived mid-animation; snap to the previous target first.
         if let Some(anim) = self.animation.take() {
@@ -98,7 +104,9 @@ impl GameScene {
 
 /// Extracts the (player, from, to) cells of a move from a turn result, if it
 /// represents a piece moving on the board.
-fn move_cells(result: &CrownfallTurnResult) -> Option<(CrownfallPlayerKind, CrownfallBoardCell, CrownfallBoardCell)> {
+fn move_cells(
+    result: &CrownfallTurnResult,
+) -> Option<(CrownfallPlayerKind, CrownfallBoardCell, CrownfallBoardCell)> {
     match result {
         CrownfallTurnResult::PieceMove { player, from, to } => Some((*player, *from, *to)),
         CrownfallTurnResult::Capture {
@@ -130,7 +138,9 @@ impl Scene<SceneResult, SceneName> for GameScene {
                         continue;
                     }
                     if let Some(cell) = cell {
-                        let xy = self.board_renderer.pos_for(CrownfallBoardCell::new_index(i));
+                        let xy = self
+                            .board_renderer
+                            .pos_for(CrownfallBoardCell::new_index(i));
                         let image = self.piece_renderer.image_for_piece(cell);
                         graphics.draw_indexed_image(xy, image);
                     }

@@ -8,7 +8,10 @@
 //! GBA's ARM7TDMI, where a per-node heap clone of the history would dwarf
 //! the actual search work.
 use crate::tables::{CELL_COUNT, DIST};
-use crate::{BOARD_LENGTH, CrownfallBoardCell, CrownfallBoardState, CrownfallGame, CrownfallGameState, CrownfallPieceKind, CrownfallPlayerAction, CrownfallPlayerKind};
+use crate::{
+    BOARD_LENGTH, CrownfallBoardCell, CrownfallBoardState, CrownfallGame, CrownfallGameState,
+    CrownfallPieceKind, CrownfallPlayerAction, CrownfallPlayerKind,
+};
 
 /// Manhattan distance is at most 2*(BOARD_LENGTH-1) (opposite corners);
 /// subtracting it from this yields a "closer is bigger" score.
@@ -275,7 +278,11 @@ fn crown_index(board: &CrownfallBoardState, player: CrownfallPlayerKind) -> Opti
 /// whole thing is a single pass over the board (evaluate runs at every leaf
 /// of the search — this is the hottest loop in the crate after
 /// `apply_action` itself).
-fn evaluate(game: &CrownfallGame, player: CrownfallPlayerKind, personality: CrownfallPersonality) -> i32 {
+fn evaluate(
+    game: &CrownfallGame,
+    player: CrownfallPlayerKind,
+    personality: CrownfallPersonality,
+) -> i32 {
     let weights = personality.weights();
     let board = &game.board;
     // Proximity to a Crown that's already been captured is meaningless, so a

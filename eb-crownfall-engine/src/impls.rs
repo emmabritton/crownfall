@@ -240,7 +240,11 @@ impl CrownfallBoardState {
     /// A Knight that just moved must land here (not merely directly ahead)
     /// to be the piece completing a Knight Capture pincer — see
     /// `check_piece_captures`/`check_crown_capture`.
-    fn is_diagonally_forward_of(target: CrownfallBoardCell, attacker_cell: CrownfallBoardCell, attacker: CrownfallPlayerKind) -> bool {
+    fn is_diagonally_forward_of(
+        target: CrownfallBoardCell,
+        attacker_cell: CrownfallBoardCell,
+        attacker: CrownfallPlayerKind,
+    ) -> bool {
         tables::COORD[attacker_cell.to_index()].0 != tables::COORD[target.to_index()].0
             && tables::KNIGHT_ARCS[attacker.opposite() as usize][target.to_index()]
                 .as_slice()
@@ -257,7 +261,10 @@ impl CrownfallBoardState {
 
     /// First pair among `attackers` whose piece kinds form a valid capture,
     /// in the order the attackers were gathered.
-    fn first_capturing_pair(&self, attackers: &[u8]) -> Option<((CrownfallBoardCell, CrownfallBoardCell), CaptureKind)> {
+    fn first_capturing_pair(
+        &self,
+        attackers: &[u8],
+    ) -> Option<((CrownfallBoardCell, CrownfallBoardCell), CaptureKind)> {
         for i in 0..attackers.len() {
             for j in (i + 1)..attackers.len() {
                 let pair = (
@@ -313,15 +320,17 @@ impl CrownfallBoardState {
     ///
     /// The Crown may only stand in for a Knight, never a Spy (README "Crown" section),
     /// so a Crown+Spy pair does not form a valid capture.
-    fn capture_kind(&self, attackers: (CrownfallBoardCell, CrownfallBoardCell)) -> Option<CaptureKind> {
+    fn capture_kind(
+        &self,
+        attackers: (CrownfallBoardCell, CrownfallBoardCell),
+    ) -> Option<CaptureKind> {
         let a = self.cells[attackers.0.to_index()]?.kind;
         let b = self.cells[attackers.1.to_index()]?.kind;
         match (a, b) {
             (CrownfallPieceKind::Spy, CrownfallPieceKind::Spy) => Some(CaptureKind::Spy),
             (CrownfallPieceKind::Knight, CrownfallPieceKind::Knight) => Some(CaptureKind::Knight),
-            (CrownfallPieceKind::Crown, CrownfallPieceKind::Knight) | (CrownfallPieceKind::Knight, CrownfallPieceKind::Crown) => {
-                Some(CaptureKind::Knight)
-            }
+            (CrownfallPieceKind::Crown, CrownfallPieceKind::Knight)
+            | (CrownfallPieceKind::Knight, CrownfallPieceKind::Crown) => Some(CaptureKind::Knight),
             _ => None,
         }
     }
@@ -362,7 +371,10 @@ impl CrownfallBoardState {
     }
 
     /// The attacker's own piece other than `moved` in an attacking pair.
-    fn other_attacker(attackers: (CrownfallBoardCell, CrownfallBoardCell), moved: CrownfallBoardCell) -> CrownfallBoardCell {
+    fn other_attacker(
+        attackers: (CrownfallBoardCell, CrownfallBoardCell),
+        moved: CrownfallBoardCell,
+    ) -> CrownfallBoardCell {
         if attackers.0 == moved {
             attackers.1
         } else {
@@ -409,7 +421,8 @@ impl CrownfallBoardState {
             cells[len] = neighbour;
             len += 1;
         }
-        if matches!(self.cells[to.to_index()], Some(piece) if piece.kind == CrownfallPieceKind::Knight) {
+        if matches!(self.cells[to.to_index()], Some(piece) if piece.kind == CrownfallPieceKind::Knight)
+        {
             for &cell in tables::KNIGHT_ARCS[mover as usize][to.to_index()].as_slice() {
                 if !cells[..len].contains(&cell) {
                     cells[len] = cell;
@@ -426,7 +439,12 @@ impl CrownfallBoardState {
     /// pincer if it lands diagonally ahead of the target — a partner Knight already
     /// in place may sit directly ahead, but the just-moved piece may not (see
     /// `is_diagonally_forward_of`). Non-Knight movers (Crown, Spy) are unrestricted.
-    fn moved_knight_completes_pincer(&self, to: CrownfallBoardCell, target: CrownfallBoardCell, attacker: CrownfallPlayerKind) -> bool {
+    fn moved_knight_completes_pincer(
+        &self,
+        to: CrownfallBoardCell,
+        target: CrownfallBoardCell,
+        attacker: CrownfallPlayerKind,
+    ) -> bool {
         match self.cells[to.to_index()] {
             Some(piece) if piece.kind == CrownfallPieceKind::Knight => {
                 Self::is_diagonally_forward_of(target, to, attacker)
@@ -435,7 +453,11 @@ impl CrownfallBoardState {
         }
     }
 
-    fn check_crown_capture(&self, to: CrownfallBoardCell, attacker: CrownfallPlayerKind) -> Option<CrownfallBoardCell> {
+    fn check_crown_capture(
+        &self,
+        to: CrownfallBoardCell,
+        attacker: CrownfallPlayerKind,
+    ) -> Option<CrownfallBoardCell> {
         let (cells, len) = self.capture_scan_cells(to, attacker);
         for &index in &cells[..len] {
             let Some(piece) = self.cells[index as usize] else {
@@ -455,11 +477,18 @@ impl CrownfallBoardState {
         None
     }
 
-    fn check_piece_captures(&self, to: CrownfallBoardCell, attacker: CrownfallPlayerKind) -> PieceCaptures {
+    fn check_piece_captures(
+        &self,
+        to: CrownfallBoardCell,
+        attacker: CrownfallPlayerKind,
+    ) -> PieceCaptures {
         let placeholder = PieceCapture {
             target: CrownfallBoardCell { index: 0 },
             kind: CaptureKind::Spy,
-            attackers: (CrownfallBoardCell { index: 0 }, CrownfallBoardCell { index: 0 }),
+            attackers: (
+                CrownfallBoardCell { index: 0 },
+                CrownfallBoardCell { index: 0 },
+            ),
         };
         let mut captures = [placeholder; MAX_SCAN_CELLS];
         let mut count = 0;
@@ -536,7 +565,10 @@ impl CrownfallGame {
     /// search, most importantly) don't have to copy the ever-growing
     /// position `history`. On `Err` the game is guaranteed untouched —
     /// every validation runs before the first mutation.
-    pub fn apply_action(&mut self, action: CrownfallPlayerAction) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
+    pub fn apply_action(
+        &mut self,
+        action: CrownfallPlayerAction,
+    ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
         self.apply_action_with_logging(action, true)
     }
 
@@ -562,12 +594,18 @@ impl CrownfallGame {
                     return Err(CrownfallError::NotYourTurn(action.player()));
                 }
             }
-            CrownfallGameState::Victory(_) => return Err(CrownfallError::GameOver(action.player())),
+            CrownfallGameState::Victory(_) => {
+                return Err(CrownfallError::GameOver(action.player()));
+            }
             CrownfallGameState::Draw(_) => return Err(CrownfallError::GameOver(action.player())),
         }
         match action {
-            CrownfallPlayerAction::Move { player, from, to } => self.apply_move(player, from, to, log_moves),
-            CrownfallPlayerAction::KnightRemoval { player, at } => self.apply_knight_removal(player, at),
+            CrownfallPlayerAction::Move { player, from, to } => {
+                self.apply_move(player, from, to, log_moves)
+            }
+            CrownfallPlayerAction::KnightRemoval { player, at } => {
+                self.apply_knight_removal(player, at)
+            }
             CrownfallPlayerAction::Surrender { player } => {
                 self.state = CrownfallGameState::Victory(player.opposite());
                 Ok(None)
@@ -696,7 +734,9 @@ impl CrownfallGame {
                 // The attacking player only loses one of their own knights when the
                 // *captured piece itself* was a Knight (README "Knight Capture") — a
                 // Knight+Knight/Knight+Crown pincer capturing a Spy carries no penalty.
-                if capture.kind == CaptureKind::Knight && target_kind == Some(CrownfallPieceKind::Knight) {
+                if capture.kind == CaptureKind::Knight
+                    && target_kind == Some(CrownfallPieceKind::Knight)
+                {
                     let lost_knight = if piece.kind == CrownfallPieceKind::Crown {
                         second_attacker
                     } else {

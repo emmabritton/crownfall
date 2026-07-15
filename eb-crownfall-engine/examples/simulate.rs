@@ -6,7 +6,8 @@
 
 use eb_crownfall_engine::ai;
 use eb_crownfall_engine::{
-    CrownfallBoardCell, CrownfallGame, CrownfallGameState, CrownfallPlayState, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult, DrawReason,
+    CrownfallBoardCell, CrownfallGame, CrownfallGameState, CrownfallPlayState,
+    CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult, DrawReason,
 };
 
 /// Small deterministic xorshift64 PRNG so results are reproducible from a seed
@@ -49,8 +50,12 @@ fn legal_moves(game: &CrownfallGame, player: CrownfallPlayerKind) -> Vec<Crownfa
 
 fn current_player(game: &CrownfallGame) -> Option<CrownfallPlayerKind> {
     match &game.state {
-        CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput { player }) => Some(*player),
-        CrownfallGameState::Playing(CrownfallPlayState::MustRemoveKnight { player, .. }) => Some(*player),
+        CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput { player }) => {
+            Some(*player)
+        }
+        CrownfallGameState::Playing(CrownfallPlayState::MustRemoveKnight { player, .. }) => {
+            Some(*player)
+        }
         CrownfallGameState::Victory(_) | CrownfallGameState::Draw(_) => None,
     }
 }

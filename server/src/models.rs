@@ -1,5 +1,7 @@
 use chrono::Utc;
-use eb_crownfall_engine::{CrownfallGame, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult};
+use eb_crownfall_engine::{
+    CrownfallGame, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallTurnResult,
+};
 use networking::models::{PendingGame, WebGame};
 use networking::packet::{GameId, PendingGameState, PerformActionState, Username};
 use networking::server::ClientId;
