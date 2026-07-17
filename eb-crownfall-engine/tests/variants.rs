@@ -571,3 +571,70 @@ fn diagonal_knight_capture_invalid_when_moved_knight_lands_straight_ahead() {
         "target survives - the moved knight landed in the non-exposed straight-ahead cell"
     );
 }
+
+// ---------------------------------------------------------------------
+// Knight mass capture (variant 7)
+// ---------------------------------------------------------------------
+
+/// 3 of the 5 extended-arc cells (straight-ahead partner, the moved
+/// diagonal attacker, and a flank Knight not party to the pincer at all)
+/// occupied by attacker Knights waives the usual self-sacrifice entirely.
+#[test]
+fn knight_mass_capture_waives_sacrifice_with_three_knights_in_the_arc() {
+    let mut board = CrownfallBoardState::empty(CrownfallBoardVariant::Normal);
+    place(&mut board, 3, 3, Knight, Black); // target
+    place(&mut board, 3, 4, Knight, White); // straight-ahead partner, pre-placed
+    place(&mut board, 4, 3, Knight, White); // flank knight, not part of the pincer
+    place(&mut board, 2, 5, Knight, White); // will move to (2,4), diagonally ahead
+    let mut game = game_with(board, White, CrownfallRules::standard_knight_mass_capture());
+
+    let result = mv(&mut game, White, (2, 5), (2, 4)).unwrap();
+    assert!(matches!(
+        result,
+        Some(CrownfallTurnResult::Capture { player: White, .. })
+    ));
+    assert_eq!(piece_at(&game.board, 3, 3), None, "target captured");
+    assert_eq!(
+        piece_at(&game.board, 2, 4),
+        Some(CrownfallPiece::new(Knight, White)),
+        "moved attacking knight survives - sacrifice waived by the 3-knight arc"
+    );
+    assert_eq!(
+        piece_at(&game.board, 3, 4),
+        Some(CrownfallPiece::new(Knight, White)),
+        "partner knight survives"
+    );
+    assert_eq!(
+        piece_at(&game.board, 4, 3),
+        Some(CrownfallPiece::new(Knight, White)),
+        "flank knight survives"
+    );
+}
+
+/// Under the same ruleset, only 2 attacker Knights in the arc still pays
+/// the ordinary self-sacrifice - the waiver only kicks in at 3+.
+#[test]
+fn knight_mass_capture_still_sacrifices_with_only_two_knights_in_the_arc() {
+    let mut board = CrownfallBoardState::empty(CrownfallBoardVariant::Normal);
+    place(&mut board, 3, 3, Knight, Black); // target
+    place(&mut board, 3, 4, Knight, White); // straight-ahead partner, pre-placed
+    place(&mut board, 2, 5, Knight, White); // will move to (2,4), diagonally ahead
+    let mut game = game_with(board, White, CrownfallRules::standard_knight_mass_capture());
+
+    let result = mv(&mut game, White, (2, 5), (2, 4)).unwrap();
+    assert!(matches!(
+        result,
+        Some(CrownfallTurnResult::Capture { player: White, .. })
+    ));
+    assert_eq!(piece_at(&game.board, 3, 3), None, "target captured");
+    assert_eq!(
+        piece_at(&game.board, 2, 4),
+        None,
+        "moved attacking knight is still sacrificed - only 2 knights in the arc"
+    );
+    assert_eq!(
+        piece_at(&game.board, 3, 4),
+        Some(CrownfallPiece::new(Knight, White)),
+        "partner knight survives"
+    );
+}

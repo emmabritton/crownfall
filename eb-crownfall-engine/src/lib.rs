@@ -88,6 +88,15 @@ pub enum CrownfallRuleset {
         /// orthogonal-forward-only movement with a diagonal-forward capture
         /// arc.
         knights_move_diagonally: bool,
+        /// Variant 7: a Knight Capture normally costs the attacker one of
+        /// their own Knights whenever the captured piece was itself a
+        /// Knight (see `WinReason`/README "Knight Capture"). Under this
+        /// toggle, that self-sacrifice is waived whenever at least 3 of the
+        /// 5 cells forming the extended arc around the target (the 3-cell
+        /// forward Knight-capture shape plus the two orthogonal flank
+        /// cells) are occupied by attacker-owned Knights - overwhelming
+        /// local force captures for free instead of trading 1-for-1.
+        knight_mass_capture: bool,
     },
 }
 
@@ -99,6 +108,7 @@ impl CrownfallRules {
                 mandatory_capture: false,
                 all_captures_processed: false,
                 knights_move_diagonally: false,
+                knight_mass_capture: false,
             },
         }
     }
@@ -144,6 +154,7 @@ impl CrownfallRules {
                 mandatory_capture: true,
                 all_captures_processed: false,
                 knights_move_diagonally: false,
+                knight_mass_capture: false,
             },
             ..CrownfallRules::standard()
         }
@@ -155,6 +166,7 @@ impl CrownfallRules {
                 mandatory_capture: false,
                 all_captures_processed: true,
                 knights_move_diagonally: false,
+                knight_mass_capture: false,
             },
             ..CrownfallRules::standard()
         }
@@ -166,6 +178,19 @@ impl CrownfallRules {
                 mandatory_capture: false,
                 all_captures_processed: false,
                 knights_move_diagonally: true,
+                knight_mass_capture: false,
+            },
+            ..CrownfallRules::standard()
+        }
+    }
+
+    pub const fn standard_knight_mass_capture() -> CrownfallRules {
+        CrownfallRules {
+            ruleset: CrownfallRuleset::Custom {
+                mandatory_capture: false,
+                all_captures_processed: false,
+                knights_move_diagonally: false,
+                knight_mass_capture: true,
             },
             ..CrownfallRules::standard()
         }
@@ -525,4 +550,22 @@ pub enum CrownfallTurnResult {
         player: CrownfallPlayerKind,
         surrounded_crown: CrownfallBoardCell,
     },
+}
+
+/// What a candidate `from -> to` move would capture, without applying it -
+/// see `CrownfallBoardState::preview_move_captures`.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MoveCapturePreview {
+    /// Enemy pieces this move would remove.
+    pub captured: Vec<CrownfallBoardCell>,
+    /// True if the moving piece would itself end up captured - either the
+    /// Crown walking into an existing enemy pincer (README "Crown" - takes
+    /// priority over everything else and ends the game outright in real
+    /// play), or a non-Crown piece walking into a pre-existing enemy Spy
+    /// pincer (README "Spy Capture" - applies "even if the enemy moved
+    /// there"). `captured` never includes the mover's own cell; a non-empty
+    /// `captured` alongside `mover_captured: true` is only possible under
+    /// `CrownfallRuleset::Custom`'s `all_captures_processed` toggle.
+    pub mover_captured: bool,
 }

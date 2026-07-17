@@ -98,8 +98,11 @@ fn play_game(
     white_depth: u8,
     black_depth: u8,
     random_opening_plies: usize,
+    rules: CrownfallRules,
+    white_personality: ai::CrownfallPersonality,
+    black_personality: ai::CrownfallPersonality,
 ) -> GameResult {
-    let mut game = CrownfallGame::default();
+    let mut game = CrownfallGame::new(rules);
     let mut rng = Rng::new(seed);
     let mut turns = 0usize;
 
@@ -130,12 +133,12 @@ fn play_game(
             }
             moves[rng.gen_range(moves.len())]
         } else {
-            let depth = if player == CrownfallPlayerKind::White {
-                white_depth
+            let (depth, personality) = if player == CrownfallPlayerKind::White {
+                (white_depth, white_personality)
             } else {
-                black_depth
+                (black_depth, black_personality)
             };
-            match ai::best_move(&game, player, depth, ai::CrownfallPersonality::Balanced) {
+            match ai::best_move(&game, player, depth, personality) {
                 Some(action) => action,
                 None => {
                     return GameResult {
@@ -269,11 +272,14 @@ impl BatchStats {
 fn main() {
     println!("Crownfall self-play analysis (negamax AI vs itself)\n");
 
+    let standard = CrownfallRules::standard();
+    let bal = ai::CrownfallPersonality::Balanced;
+
     // Batch A: symmetric strength, randomized 4-ply openings for variety.
     // Measures baseline first-move advantage and how games typically end.
     let mut symmetric = BatchStats::new("Symmetric depth 3 vs 3, randomized 4-ply openings");
     for seed in 0..200u64 {
-        let result = play_game(seed + 1, 3, 3, 4);
+        let result = play_game(seed + 1, 3, 3, 4, standard, bal, bal);
         symmetric.record(&result);
     }
     symmetric.print();
@@ -281,7 +287,7 @@ fn main() {
     // Batch B: same but deeper (depth 4) to see if the imbalance shifts with strength.
     let mut symmetric_deep = BatchStats::new("Symmetric depth 4 vs 4, randomized 4-ply openings");
     for seed in 0..60u64 {
-        let result = play_game(seed + 10_000, 4, 4, 4);
+        let result = play_game(seed + 10_000, 4, 4, 4, standard, bal, bal);
         symmetric_deep.record(&result);
     }
     symmetric_deep.print();
@@ -298,7 +304,7 @@ fn main() {
     for (label, wd, bd) in matchups {
         let mut stats = BatchStats::new(label);
         for seed in 0..30u64 {
-            let result = play_game(seed + 20_000, wd, bd, 4);
+            let result = play_game(seed + 20_000, wd, bd, 4, standard, bal, bal);
             stats.record(&result);
         }
         stats.print();
@@ -316,9 +322,59 @@ fn main() {
                 3,
                 3,
                 opening_plies,
+                standard,
+                bal,
+                bal,
             );
             stats.record(&result);
         }
         stats.print();
+    }
+
+    // Batch E: variant 7 (knight_mass_capture) under the exact same
+    // conditions as Batch A, for a direct before/after comparison of how
+    // waiving the Knight Capture self-sacrifice at 3-in-the-arc shifts win
+    // reasons, game length, and the White/Black split.
+    let mass_capture = CrownfallRules::standard_knight_mass_capture();
+    let mut mass = BatchStats::new(
+        "[knight_mass_capture] Symmetric depth 3 vs 3, randomized 4-ply openings",
+    );
+    for seed in 0..200u64 {
+        let result = play_game(seed + 1, 3, 3, 4, mass_capture, bal, bal);
+        mass.record(&result);
+    }
+    mass.print();
+
+    let mut mass_deep = BatchStats::new(
+        "[knight_mass_capture] Symmetric depth 4 vs 4, randomized 4-ply openings",
+    );
+    for seed in 0..60u64 {
+        let result = play_game(seed + 10_000, 4, 4, 4, mass_capture, bal, bal);
+        mass_deep.record(&result);
+    }
+    mass_deep.print();
+
+    // Batch F: personality matchups, depth 3 vs 3, 4-ply random openings -
+    // same conditions as Batch A/E, run under both the standard ruleset and
+    // knight_mass_capture, so personality effects and the rule-change effect
+    // can be read side by side.
+    use ai::CrownfallPersonality::{Aggressive, Balanced, Defensive};
+    let personality_matchups: [(&str, ai::CrownfallPersonality, ai::CrownfallPersonality); 5] = [
+        ("Defensive vs Defensive", Defensive, Defensive),
+        ("Aggressive vs Aggressive", Aggressive, Aggressive),
+        ("Balanced vs Balanced", Balanced, Balanced),
+        ("Aggressive vs Defensive", Aggressive, Defensive),
+        ("Aggressive vs Balanced", Aggressive, Balanced),
+    ];
+    for (rules_label, rules) in [("standard", standard), ("knight_mass_capture", mass_capture)] {
+        for (label, white_p, black_p) in personality_matchups {
+            let mut stats =
+                BatchStats::new(format!("[{rules_label}] {label}, depth 3 vs 3, 4-ply openings"));
+            for seed in 0..200u64 {
+                let result = play_game(seed + 1, 3, 3, 4, rules, white_p, black_p);
+                stats.record(&result);
+            }
+            stats.print();
+        }
     }
 }

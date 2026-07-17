@@ -41,22 +41,26 @@ impl RulesetOption {
                 mandatory_capture: false,
                 all_captures_processed: false,
                 knights_move_diagonally: false,
+                knight_mass_capture: false,
             },
             RulesetOption::Archers => CrownfallRuleset::Archers,
             RulesetOption::MandatoryCapture => CrownfallRuleset::Custom {
                 mandatory_capture: true,
                 all_captures_processed: false,
                 knights_move_diagonally: false,
+                knight_mass_capture: false,
             },
             RulesetOption::AllCapturesProcessed => CrownfallRuleset::Custom {
                 mandatory_capture: false,
                 all_captures_processed: true,
                 knights_move_diagonally: false,
+                knight_mass_capture: false,
             },
             RulesetOption::DiagonalKnights => CrownfallRuleset::Custom {
                 mandatory_capture: false,
                 all_captures_processed: false,
                 knights_move_diagonally: true,
+                knight_mass_capture: false,
             },
         }
     }

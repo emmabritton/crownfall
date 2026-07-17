@@ -16,6 +16,18 @@ use crate::{CrownfallRuleset, tables};
 
 const VICTORY_SCORE: i32 = 1000000;
 
+/// "Contempt" for draws: a Draw terminal is scored as mildly worse than a
+/// neutral position instead of flat 0, so that when the search finds a
+/// drawing line and a roughly-even non-drawing line at the same depth, it
+/// prefers the latter instead of being indifferent. Kept below the cheapest
+/// piece weight (`Weights::spy`/`archer`, 15-25 depending on personality) so
+/// the AI is nudged away from repetition/shuffling but never sacrifices a
+/// whole piece purely to dodge a draw - it only breaks ties among otherwise
+/// similar continuations. Applied uniformly regardless of which player the
+/// score is relative to, so it doesn't disturb negamax's zero-sum recursion
+/// the way an asymmetric bonus would.
+const DRAW_SCORE: i32 = -14;
+
 /// Upper bound on one side's legal moves across every board size: Grand's
 /// 14 pieces/side (8 Knight + 3 Spy + 1 Crown + 2 Archer), each with at most
 /// 4 destinations, is the largest - a flat stack array sized for the worst
@@ -243,7 +255,7 @@ fn negamax(
                 -VICTORY_SCORE
             };
         }
-        CrownfallGameState::Draw(_) => return 0,
+        CrownfallGameState::Draw(_) => return DRAW_SCORE,
         CrownfallGameState::Playing(_) => {}
     }
     if depth == 0 {
@@ -450,6 +462,18 @@ fn order_moves(
 /// whole thing is a single pass over the board (evaluate runs at every leaf
 /// of the search — this is the hottest loop in the crate after
 /// `apply_action` itself).
+///
+/// Two attempts at scaling mobility/crown_proximity up as a draw threshold
+/// approaches (favoring forward contact under time pressure) were tried and
+/// reverted - both consistently made self-play draw rates *worse* in mirror
+/// matchups (same personality/depth on both sides), for a small and
+/// inconsistent benefit elsewhere. In hindsight a draw between two
+/// identically-matched opponents isn't a defect to engineer away - it's the
+/// correct outcome when neither side can force an advantage, the same way
+/// chess engines don't try to eliminate draws between equal play. The
+/// matchups where a real asymmetry exists (different personality or depth)
+/// already resolve more decisively without any special-casing, since the
+/// asymmetry itself does that work.
 fn evaluate(
     game: &CrownfallGame,
     player: CrownfallPlayerKind,

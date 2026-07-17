@@ -698,6 +698,94 @@ impl CrownfallBoardState {
             .collect()
     }
 
+    /// Previews what the candidate move `from -> to` would capture, without
+    /// applying it to `self` - `None` if there's no piece at `from`, or `to`
+    /// isn't a legal destination for it (unoccupied and within
+    /// `move_candidates`; unlike a real move, this doesn't check
+    /// `rules.mandatory_capture`, since that's a whole-turn constraint
+    /// across every candidate move, not a property of this one). Mirrors the
+    /// priority order `CrownfallGame::apply_move`/`apply_move_sequential`/
+    /// `apply_move_all_captures_processed` use when actually resolving a
+    /// move (crown-loss first, then enemy-crown capture, then Spy Capture of
+    /// the mover, then ordinary piece captures, then an Archer's ranged
+    /// shot), so a UI can show what a move *would* do before the player
+    /// commits to it via `CrownfallPlayerAction::Move`.
+    pub fn preview_move_captures(
+        &self,
+        from: CrownfallBoardCell,
+        to: CrownfallBoardCell,
+        rules: CrownfallRules,
+    ) -> Option<MoveCapturePreview> {
+        let from_index = from.to_index();
+        let to_index = to.to_index();
+        let piece = self.cells()[from_index]?;
+        if self.cells()[to_index].is_some()
+            || !self.move_candidates(from, rules).contains(&(to_index as u8))
+        {
+            return None;
+        }
+
+        let player = piece.player();
+        let mut scratch = *self;
+        scratch.cells_mut()[from_index] = None;
+        scratch.cells_mut()[to_index] = Some(piece);
+
+        // Crown-loss takes priority over every other check, own Crown
+        // included, and pre-empts anything else the move would otherwise do
+        // - matches `CrownfallGame::apply_move`.
+        if scratch.check_own_crown_trap(to, player, rules) {
+            return Some(MoveCapturePreview {
+                captured: Vec::new(),
+                mover_captured: true,
+            });
+        }
+
+        let all_captures_processed_enabled = matches!(
+            rules.ruleset,
+            CrownfallRuleset::Custom {
+                all_captures_processed: true,
+                ..
+            }
+        );
+
+        let mut preview = MoveCapturePreview::default();
+
+        if let Some(surrounded_crown) = scratch.check_crown_capture(to, player, rules) {
+            preview.captured.push(surrounded_crown);
+            if !all_captures_processed_enabled {
+                return Some(preview);
+            }
+        }
+
+        if scratch.check_self_spy_trap(to, player, rules) {
+            preview.mover_captured = true;
+            if !all_captures_processed_enabled {
+                return Some(preview);
+            }
+        }
+
+        let (piece_captures, count) = scratch.check_piece_captures(to, player, rules);
+        if count > 0 {
+            preview
+                .captured
+                .extend(piece_captures[..count].iter().map(|c| c.target));
+            if !all_captures_processed_enabled {
+                return Some(preview);
+            }
+        }
+
+        if piece.kind() == CrownfallPieceKind::Archer {
+            let (archer_captures, archer_count) = scratch.check_archer_capture(to, player);
+            preview.captured.extend(
+                archer_captures[..archer_count]
+                    .iter()
+                    .map(|(target, _)| *target),
+            );
+        }
+
+        Some(preview)
+    }
+
     /// The table used to find valid Knight *attacker* positions relative to
     /// a target: the diagonal-forward arc normally, or the ortho-minus-
     /// backward shape under variant 6 (where movement and capture-arc swap
@@ -747,6 +835,40 @@ impl CrownfallBoardState {
         }
         self.knight_capture_shape(attacker.opposite(), target.to_index(), rules)
             .contains(&(attacker_cell.to_index() as u8))
+    }
+
+    /// True if at least 3 of the 5 cells forming the extended Knight-mass
+    /// arc around `target` (the 3-cell forward Knight-capture shape used by
+    /// `find_attacking_pair`, plus the two orthogonal flank cells - same
+    /// row, one column either side) are occupied by `attacker`-owned
+    /// Knights. Only consulted when `CrownfallRuleset::Custom`'s
+    /// `knight_mass_capture` toggle is enabled (see `lib.rs`), to waive the
+    /// usual Knight Capture self-sacrifice when the attacker locally
+    /// outnumbers the defender 3-to-1 in Knights.
+    fn has_mass_knight_arc(
+        &self,
+        target: CrownfallBoardCell,
+        attacker: CrownfallPlayerKind,
+        rules: CrownfallRules,
+    ) -> bool {
+        let variant = self.variant();
+        let target_index = target.to_index();
+        let (_, target_y) = tables::coord(variant, target_index);
+        let is_attacker_knight = |cell: u8| {
+            matches!(self.cells()[cell as usize], Some(piece) if piece.player() == attacker && piece.kind() == CrownfallPieceKind::Knight)
+        };
+        let flank_count = tables::ortho(variant, target_index)
+            .iter()
+            .filter(|&&cell| {
+                tables::coord(variant, cell as usize).1 == target_y && is_attacker_knight(cell)
+            })
+            .count();
+        let forward_count = self
+            .knight_capture_shape(attacker.opposite(), target_index, rules)
+            .iter()
+            .filter(|&&cell| is_attacker_knight(cell))
+            .count();
+        flank_count + forward_count >= 3
     }
 
     /// Knight and Spy counts for both players in a single board pass -
@@ -1655,8 +1777,23 @@ impl CrownfallGame {
             // The attacking player only loses one of their own knights when the
             // *captured piece itself* was a Knight (README "Knight Capture") - a
             // Knight+Knight/Knight+Crown pincer capturing a Spy carries no penalty.
+            // Under the `knight_mass_capture` toggle, that sacrifice is waived
+            // entirely when the attacker has massed 3+ Knights in the extended
+            // arc around the target (see `has_mass_knight_arc`).
+            let mass_capture_enabled = matches!(
+                self.rules.ruleset,
+                CrownfallRuleset::Custom {
+                    knight_mass_capture: true,
+                    ..
+                }
+            );
+            let sacrifice_waived = mass_capture_enabled
+                && self
+                    .board
+                    .has_mass_knight_arc(capture.target, player, self.rules);
             if capture.kind == CaptureKind::Knight
                 && target_kind == Some(CrownfallPieceKind::Knight)
+                && !sacrifice_waived
             {
                 let lost_knight = if piece.kind() == CrownfallPieceKind::Crown {
                     second_attacker

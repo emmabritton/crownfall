@@ -1007,3 +1007,137 @@ fn crown_capture_diagonal_reach_does_not_count_for_a_stationary_knight() {
     );
     assert!(!matches!(result, Some(CrownfallTurnResult::Victory { .. })));
 }
+
+#[test]
+fn preview_reports_an_ordinary_pincer_capture_without_touching_the_board() {
+    // Same setup as `knight_pincer_of_two_diagonal_attackers_captures`.
+    let mut board = empty_board();
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[30] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[39] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    let before = board;
+
+    let preview = board
+        .preview_move_captures(
+            CrownfallBoardCell::new_index(39),
+            CrownfallBoardCell::new_index(32),
+            CrownfallRules::standard(),
+        )
+        .expect("legal move");
+
+    assert_eq!(preview.captured, vec![CrownfallBoardCell::new_index(24)]);
+    assert!(!preview.mover_captured);
+    assert_eq!(board, before, "preview must not mutate the board");
+}
+
+#[test]
+fn preview_reports_the_mover_captured_by_a_pre_existing_spy_pincer() {
+    // Same setup as `moving_into_a_spy_pincer_captures_the_moved_piece`.
+    let mut board = empty_board();
+    board.cells_mut()[14] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[16] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[22] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+
+    let preview = board
+        .preview_move_captures(
+            CrownfallBoardCell::new_index(22),
+            CrownfallBoardCell::new_index(15),
+            CrownfallRules::standard(),
+        )
+        .expect("legal move");
+
+    assert!(preview.captured.is_empty());
+    assert!(
+        preview.mover_captured,
+        "the moved knight walks into a pre-existing Spy pincer"
+    );
+}
+
+#[test]
+fn preview_reports_the_crown_captured_by_walking_into_a_pincer() {
+    // Same setup shape as `crown_walking_into_a_pincer_loses_immediately_even_mid_capture`
+    // family: two enemy Spies flank the Crown's destination.
+    let mut board = empty_board();
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Crown,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[16] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[30] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+
+    let preview = board
+        .preview_move_captures(
+            CrownfallBoardCell::new_index(24),
+            CrownfallBoardCell::new_index(23),
+            CrownfallRules::standard(),
+        )
+        .expect("legal move");
+
+    assert!(
+        preview.mover_captured,
+        "the crown walks into a two-spy pincer"
+    );
+    assert!(
+        preview.captured.is_empty(),
+        "crown-loss takes priority over anything else and pre-empts it"
+    );
+}
+
+#[test]
+fn preview_is_none_for_an_illegal_destination() {
+    let mut board = empty_board();
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[23] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+
+    // Occupied destination.
+    assert!(
+        board
+            .preview_move_captures(
+                CrownfallBoardCell::new_index(24),
+                CrownfallBoardCell::new_index(23),
+                CrownfallRules::standard(),
+            )
+            .is_none()
+    );
+
+    // No piece at `from`.
+    assert!(
+        board
+            .preview_move_captures(
+                CrownfallBoardCell::new_index(0),
+                CrownfallBoardCell::new_index(1),
+                CrownfallRules::standard(),
+            )
+            .is_none()
+    );
+}
