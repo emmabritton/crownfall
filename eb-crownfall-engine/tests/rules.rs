@@ -37,13 +37,13 @@ fn piece_at(board: &CrownfallBoardState, x: usize, y: usize) -> Option<Crownfall
 }
 
 fn game_with(board: CrownfallBoardState, player: CrownfallPlayerKind) -> CrownfallGame {
-    CrownfallGame {
+    let mut game = CrownfallGame::from_parts(
         board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput { player }),
-        rules: CrownfallRules::standard(),
-        history: vec![0u64],
-        moves_since_capture: 0,
-    }
+        CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput { player }),
+        CrownfallRules::standard(),
+    );
+    game.history = vec![0u32];
+    game
 }
 
 fn mv(
@@ -864,7 +864,7 @@ fn turn_limit_draw_as_an_absolute_safety_net() {
     place(&mut board, 0, 0, Spy, White);
     place(&mut board, 6, 6, Spy, Black);
     let mut game = game_with(board, White);
-    game.history = vec![0u64; 200];
+    game.history = vec![0u32; 200];
 
     mv(&mut game, White, (0, 0), (1, 0)).unwrap();
     assert_eq!(game.state, CrownfallGameState::Draw(DrawReason::TurnLimit));
@@ -916,7 +916,7 @@ fn turns_remaining_counts_down_from_the_turn_limit() {
     place(&mut board, 0, 0, Spy, White);
     place(&mut board, 6, 6, Spy, Black);
     let mut game = game_with(board, White);
-    game.history = vec![0u64; 150];
+    game.history = vec![0u32; 150];
     assert_eq!(game.turns_remaining(), 200 - 149);
 
     mv(&mut game, White, (0, 0), (1, 0)).unwrap();

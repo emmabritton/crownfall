@@ -33,13 +33,13 @@ fn game_with(
     player: CrownfallPlayerKind,
     rules: CrownfallRules,
 ) -> CrownfallGame {
-    CrownfallGame {
+    let mut game = CrownfallGame::from_parts(
         board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput { player }),
+        CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput { player }),
         rules,
-        history: vec![0u64],
-        moves_since_capture: 0,
-    }
+    );
+    game.history = vec![0u32];
+    game
 }
 
 fn mv(
@@ -196,7 +196,7 @@ fn mini_turn_limit_draw_fires_at_half_the_normal_limit() {
     place(&mut board, 0, 0, Spy, White);
     place(&mut board, 4, 4, Spy, Black);
     let mut game = game_with(board, White, CrownfallRules::mini());
-    game.history = vec![0u64; 100];
+    game.history = vec![0u32; 100];
 
     mv(&mut game, White, (0, 0), (1, 0)).unwrap();
     assert_eq!(game.state, CrownfallGameState::Draw(DrawReason::TurnLimit));
@@ -208,7 +208,7 @@ fn grand_turn_limit_draw_fires_at_double_the_normal_limit() {
     place(&mut board, 0, 0, Spy, White);
     place(&mut board, 8, 8, Spy, Black);
     let mut game = game_with(board, White, CrownfallRules::grand());
-    game.history = vec![0u64; 400];
+    game.history = vec![0u32; 400];
 
     mv(&mut game, White, (0, 0), (1, 0)).unwrap();
     assert_eq!(game.state, CrownfallGameState::Draw(DrawReason::TurnLimit));

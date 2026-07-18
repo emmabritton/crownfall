@@ -4,6 +4,17 @@ fn empty_board() -> CrownfallBoardState {
     CrownfallBoardState::empty(CrownfallBoardVariant::Normal)
 }
 
+/// Every test here plays White to move under standard rules.
+fn game_with(board: CrownfallBoardState) -> CrownfallGame {
+    CrownfallGame::from_parts(
+        board,
+        CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
+            player: CrownfallPlayerKind::White,
+        }),
+        CrownfallRules::standard(),
+    )
+}
+
 fn pad_board_to_avoid_attrition(board: &mut CrownfallBoardState, player: CrownfallPlayerKind) {
     board.cells_mut()[0] = Some(CrownfallPiece::new(CrownfallPieceKind::Spy, player));
     board.cells_mut()[1] = Some(CrownfallPiece::new(CrownfallPieceKind::Knight, player));
@@ -26,15 +37,7 @@ fn spy_capture_removes_target_from_board() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, _result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -69,15 +72,7 @@ fn knight_pincer_of_two_diagonal_attackers_captures() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, _result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -113,15 +108,7 @@ fn knight_beside_target_cannot_complete_a_pincer() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -161,15 +148,7 @@ fn knight_moving_directly_ahead_cannot_complete_a_pincer_even_with_diagonal_part
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -207,15 +186,7 @@ fn knight_capture_removes_target_and_one_attacker() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, _result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -275,15 +246,7 @@ fn high_spy_count_prevents_attrition_despite_low_knight_count() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, _result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -323,15 +286,7 @@ fn attrition_triggers_once_both_knights_and_spies_are_depleted() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, _result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -369,15 +324,7 @@ fn knight_capture_leaving_one_knight_each_side_from_the_same_capture() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, _result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -414,15 +361,7 @@ fn knight_pincer_capturing_a_spy_loses_no_knight() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, _result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -463,15 +402,7 @@ fn crown_partnered_knight_capture_never_loses_the_crown() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, _result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -517,15 +448,7 @@ fn knight_moving_directly_ahead_cannot_complete_a_pincer_even_with_crown_partner
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -566,15 +489,7 @@ fn single_move_capturing_two_pieces_removes_both() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, _result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -618,15 +533,7 @@ fn extra_adjacent_attacker_does_not_block_a_valid_pincer() {
     ));
     pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -662,15 +569,7 @@ fn crown_cannot_stand_in_for_a_spy() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, _result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -706,15 +605,7 @@ fn moving_into_a_spy_pincer_captures_the_moved_piece() {
     ));
     pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::White);
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -741,15 +632,7 @@ fn knights_can_move_orthogonally_but_not_backward_or_diagonally() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     // Sideways (same row) is legal.
     assert!(
@@ -820,15 +703,7 @@ fn crown_walking_into_a_pincer_loses_immediately_even_mid_capture() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -877,15 +752,7 @@ fn crown_capture_needs_no_knight_arc_any_two_adjacent_sides_count() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -930,15 +797,7 @@ fn crown_capture_via_a_knights_diagonal_reach_when_that_knight_just_moved() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, result) = game
         .handle_player_action(CrownfallPlayerAction::Move {
@@ -983,15 +842,7 @@ fn crown_capture_diagonal_reach_does_not_count_for_a_stationary_knight() {
         CrownfallPlayerKind::White,
     ));
 
-    let game = CrownfallGame {
-        board,
-        state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
-            player: CrownfallPlayerKind::White,
-        }),
-        rules: CrownfallRules::standard(),
-        history: Vec::new(),
-        moves_since_capture: 0,
-    };
+    let game = game_with(board);
 
     let (game, result) = game
         .handle_player_action(CrownfallPlayerAction::Move {

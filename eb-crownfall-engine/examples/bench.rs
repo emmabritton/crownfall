@@ -1,12 +1,14 @@
 //! Temporary micro-benchmark for optimisation work: times full AI searches
 //! from a few reproducible positions across board sizes.
 
-use eb_crownfall_engine::ai::{self, CrownfallPersonality};
+use eb_crownfall_engine::ai::{CrownfallPersonality, CrownfallSearcher};
 use eb_crownfall_engine::{CrownfallGame, CrownfallGameState, CrownfallRules};
 use std::time::Instant;
 
 fn drive(rules: CrownfallRules, plies: u32, depth: u8, label: &str) {
     let mut game = CrownfallGame::new(rules);
+    // Persistent across moves, like the client's vs-AI loop.
+    let mut searcher = CrownfallSearcher::new();
     let start = Instant::now();
     let mut moves_made = 0u32;
     for _ in 0..plies {
@@ -14,7 +16,7 @@ fn drive(rules: CrownfallRules, plies: u32, depth: u8, label: &str) {
             break;
         };
         let player = play_state.player();
-        let Some(action) = ai::best_move(&game, player, depth, CrownfallPersonality::Balanced)
+        let Some(action) = searcher.best_move(&game, player, depth, CrownfallPersonality::Balanced)
         else {
             break;
         };

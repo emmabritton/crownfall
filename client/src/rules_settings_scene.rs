@@ -22,7 +22,7 @@ pub enum RulesPurpose {
 }
 
 /// Flattened, pickable stand-in for `CrownfallRuleset` - the `Custom` variant's
-/// three bools are independent in the engine, but only these named
+/// four bools are independent in the engine, but only these named
 /// combinations have dedicated `CrownfallRules` constructors, so that's what's
 /// exposed here rather than a combinatorial checkbox grid.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -32,6 +32,7 @@ enum RulesetOption {
     MandatoryCapture,
     AllCapturesProcessed,
     DiagonalKnights,
+    KnightMassCapture,
 }
 
 impl RulesetOption {
@@ -62,6 +63,12 @@ impl RulesetOption {
                 knights_move_diagonally: true,
                 knight_mass_capture: false,
             },
+            RulesetOption::KnightMassCapture => CrownfallRuleset::Custom {
+                mandatory_capture: false,
+                all_captures_processed: false,
+                knights_move_diagonally: false,
+                knight_mass_capture: true,
+            },
         }
     }
 }
@@ -72,12 +79,13 @@ const BOARDS: [(CrownfallBoardVariant, &str); 3] = [
     (CrownfallBoardVariant::Grand, "Grand (9x9)"),
 ];
 
-const RULESETS: [(RulesetOption, &str); 5] = [
+const RULESETS: [(RulesetOption, &str); 6] = [
     (RulesetOption::Standard, "Standard"),
     (RulesetOption::Archers, "Archers"),
     (RulesetOption::MandatoryCapture, "Mandatory Capture"),
     (RulesetOption::AllCapturesProcessed, "All Captures Handled"),
     (RulesetOption::DiagonalKnights, "Diagonal Knights"),
+    (RulesetOption::KnightMassCapture, "Knight Mass Capture"),
 ];
 
 const DEFAULT_BOARD: CrownfallBoardVariant = CrownfallBoardVariant::Normal;

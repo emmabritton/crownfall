@@ -70,7 +70,11 @@ impl CrownTrack {
     /// Forward progress for `player`: White advances toward lower y, Black
     /// toward higher y (matches the Knight forward-arc orientation used
     /// throughout the engine - see `tables::build_arcs`'s `forward_down`).
-    fn forward_progress(player: CrownfallPlayerKind, start: (usize, usize), now: (usize, usize)) -> i32 {
+    fn forward_progress(
+        player: CrownfallPlayerKind,
+        start: (usize, usize),
+        now: (usize, usize),
+    ) -> i32 {
         match player {
             CrownfallPlayerKind::White => start.1 as i32 - now.1 as i32,
             CrownfallPlayerKind::Black => now.1 as i32 - start.1 as i32,
@@ -133,8 +137,7 @@ fn play_game(
             unreachable!("legal_moves/best_move only ever produce Move actions here")
         };
         let moved_piece = game.board.cells()[from.to_index()];
-        let is_crown_move =
-            matches!(moved_piece, Some(p) if p.kind() == CrownfallPieceKind::Crown);
+        let is_crown_move = matches!(moved_piece, Some(p) if p.kind() == CrownfallPieceKind::Crown);
 
         let (next, turn_result) = game
             .clone()
@@ -150,7 +153,9 @@ fn play_game(
             track.moves_made += 1;
             if let Some(start) = track.start {
                 let now = to.to_coord(game.board.variant());
-                track.max_forward = track.max_forward.max(CrownTrack::forward_progress(player, start, now));
+                track.max_forward = track
+                    .max_forward
+                    .max(CrownTrack::forward_progress(player, start, now));
             }
             if matches!(turn_result, Some(CrownfallTurnResult::Capture { .. })) {
                 track.captures_participated += 1;

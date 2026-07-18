@@ -348,10 +348,68 @@ pub(crate) fn coord(variant: CrownfallBoardVariant, index: usize) -> (u8, u8) {
     }
 }
 
-pub(crate) fn dist(variant: CrownfallBoardVariant, a: usize, b: usize) -> u8 {
+// Whole-table accessors for the AI's hot loops (`ai::evaluate`,
+// `ai::collect_moves`/`order_moves`, which together dominate search time):
+// resolving the board-variant match once per call and indexing the returned
+// slice directly beats re-matching it inside every per-piece/per-move lookup
+// above. The per-index functions stay for the one-shot call sites.
+
+pub(crate) fn ortho_table(variant: CrownfallBoardVariant) -> &'static [CellList] {
     match variant {
-        CrownfallBoardVariant::Mini => mini::DIST[a][b],
-        CrownfallBoardVariant::Normal => normal::DIST[a][b],
-        CrownfallBoardVariant::Grand => grand::DIST[a][b],
+        CrownfallBoardVariant::Mini => &mini::ORTHO,
+        CrownfallBoardVariant::Normal => &normal::ORTHO,
+        CrownfallBoardVariant::Grand => &grand::ORTHO,
+    }
+}
+
+pub(crate) fn knight_moves_table(
+    variant: CrownfallBoardVariant,
+    player: CrownfallPlayerKind,
+) -> &'static [CellList] {
+    match variant {
+        CrownfallBoardVariant::Mini => &mini::KNIGHT_MOVES[player as usize],
+        CrownfallBoardVariant::Normal => &normal::KNIGHT_MOVES[player as usize],
+        CrownfallBoardVariant::Grand => &grand::KNIGHT_MOVES[player as usize],
+    }
+}
+
+pub(crate) fn knight_arcs_table(
+    variant: CrownfallBoardVariant,
+    player: CrownfallPlayerKind,
+) -> &'static [CellList] {
+    match variant {
+        CrownfallBoardVariant::Mini => &mini::KNIGHT_ARCS[player as usize],
+        CrownfallBoardVariant::Normal => &normal::KNIGHT_ARCS[player as usize],
+        CrownfallBoardVariant::Grand => &grand::KNIGHT_ARCS[player as usize],
+    }
+}
+
+pub(crate) fn knight_diagonal_moves_table(
+    variant: CrownfallBoardVariant,
+    player: CrownfallPlayerKind,
+) -> &'static [CellList] {
+    match variant {
+        CrownfallBoardVariant::Mini => &mini::KNIGHT_DIAGONAL_MOVES[player as usize],
+        CrownfallBoardVariant::Normal => &normal::KNIGHT_DIAGONAL_MOVES[player as usize],
+        CrownfallBoardVariant::Grand => &grand::KNIGHT_DIAGONAL_MOVES[player as usize],
+    }
+}
+
+pub(crate) fn archer_range_table(variant: CrownfallBoardVariant) -> &'static [CellList] {
+    match variant {
+        CrownfallBoardVariant::Mini => &mini::ARCHER_RANGE,
+        CrownfallBoardVariant::Normal => &normal::ARCHER_RANGE,
+        CrownfallBoardVariant::Grand => &grand::ARCHER_RANGE,
+    }
+}
+
+/// All Manhattan distances from `a` as one row - callers measuring many
+/// cells against a fixed anchor (the enemy Crown, in the AI's proximity
+/// term and move ordering) fetch the row once and index bytes.
+pub(crate) fn dist_row(variant: CrownfallBoardVariant, a: usize) -> &'static [u8] {
+    match variant {
+        CrownfallBoardVariant::Mini => &mini::DIST[a],
+        CrownfallBoardVariant::Normal => &normal::DIST[a],
+        CrownfallBoardVariant::Grand => &grand::DIST[a],
     }
 }

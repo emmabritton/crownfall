@@ -4,7 +4,6 @@ use crate::hash;
 use crate::hash::position_hash;
 use crate::tables;
 use crate::*;
-use alloc::vec;
 use alloc::vec::Vec;
 
 /// Formats a cell as its `(x,y)` board coordinate rather than the raw
@@ -109,10 +108,10 @@ fn resolve_continuation(
     board: &CrownfallBoardState,
     board_variant: CrownfallBoardVariant,
     next_player: CrownfallPlayerKind,
-    history: &mut Vec<u64>,
+    history: &mut Vec<u32>,
     moves_since_capture: &mut u16,
     captured: bool,
-    hash_delta: u64,
+    hash_delta: u32,
 ) -> CrownfallGameState {
     if captured {
         *moves_since_capture = 0;
@@ -138,9 +137,18 @@ fn resolve_continuation(
     // so the scan window is `moves_since_capture + 1` entries, newest first,
     // not the whole ever-growing history. This runs on every applied move
     // (including AI-search nodes), where the bounded window is what keeps
-    // deep searches from going quadratic in game length.
+    // deep searches from going quadratic in game length. Entries at odd
+    // distance from the newest have the other player to move (their hash
+    // differs by `side_to_move_toggle`), so only every second entry can
+    // match - stepping by 2 halves the scan and drops those entries'
+    // collision-only false positives.
     let mut repeats = 0;
-    for &hash in history.iter().rev().take(*moves_since_capture as usize + 1) {
+    for &hash in history
+        .iter()
+        .rev()
+        .take(*moves_since_capture as usize + 1)
+        .step_by(2)
+    {
         if hash == key {
             repeats += 1;
             if repeats >= REPETITION_LIMIT {
@@ -163,21 +171,163 @@ fn resolve_continuation(
     }
 }
 
-/// Removes and returns the piece at `index` (if any), folding its Zobrist
-/// key into `hash_delta` so the position hash stays incrementally correct
-/// (see `resolve_continuation`). Occupancy-checked, so overlapping removals
-/// (possible under `all_captures_processed`, e.g. a self-trapped Knight
-/// that would also be sacrificed) never double-XOR a key.
-fn remove_piece(
-    board: &mut CrownfallBoardState,
-    index: usize,
-    hash_delta: &mut u64,
-) -> Option<CrownfallPiece> {
-    let piece = board.cells_mut()[index].take();
-    if let Some(piece) = piece {
-        *hash_delta ^= hash::piece_key(index, piece);
+/// Upper bound on cell writes one applied action can make. The worst case
+/// is `all_captures_processed`: the move itself (2), a captured Crown (1),
+/// the self-spy-trapped mover (1), up to `MAX_SCAN_CELLS` capture targets
+/// each costing a Knight sacrifice (12), and up to `MAX_ARCHER_TARGETS`
+/// archer shots (4) - 20 in total, with headroom.
+const MAX_JOURNAL: usize = 24;
+
+/// The old cell values overwritten by one applied action, in write order -
+/// the AI's make/unmake rolls a move back by replaying these in *reverse*
+/// (so a cell written twice, e.g. moved-into then trap-removed, ends up
+/// with its original content) instead of restoring a whole-board copy.
+pub(crate) struct CellJournal {
+    entries: [(u8, Option<CrownfallPiece>); MAX_JOURNAL],
+    len: u8,
+}
+
+impl CellJournal {
+    fn record(&mut self, index: usize, old: Option<CrownfallPiece>) {
+        debug_assert!(
+            (self.len as usize) < MAX_JOURNAL,
+            "one action can never write more than MAX_JOURNAL cells"
+        );
+        self.entries[self.len as usize] = (index as u8, old);
+        self.len += 1;
     }
-    piece
+
+    /// Restores every journaled cell, newest first.
+    pub(crate) fn undo(&self, board: &mut CrownfallBoardState) {
+        let cells = board.cells_mut();
+        for &(index, old) in self.entries[..self.len as usize].iter().rev() {
+            cells[index as usize] = old;
+        }
+    }
+}
+
+/// Per-action scratch state threaded through the apply path: the XOR of the
+/// Zobrist keys of every cell change (see `resolve_continuation`) and the
+/// journal of overwritten values. Callers that don't undo (real gameplay)
+/// pass a throwaway; the AI search keeps it to roll the move back.
+pub(crate) struct MoveScratch {
+    hash_delta: u32,
+    pub(crate) journal: CellJournal,
+}
+
+impl MoveScratch {
+    pub(crate) const fn new() -> MoveScratch {
+        MoveScratch {
+            hash_delta: 0,
+            journal: CellJournal {
+                entries: [(0, None); MAX_JOURNAL],
+                len: 0,
+            },
+        }
+    }
+
+    /// Ready for the next action without re-zeroing the entries array -
+    /// entries past `len` are never read, so the search reuses one scratch
+    /// per node instead of stack-initialising ~50 bytes per move tried.
+    pub(crate) fn reset(&mut self) {
+        self.hash_delta = 0;
+        self.journal.len = 0;
+    }
+}
+
+impl PieceCache {
+    /// A freshly counted cache for `board` - one full scan, run once per
+    /// game (or once after deserialization) rather than per move.
+    pub(crate) fn rebuild(board: &CrownfallBoardState) -> PieceCache {
+        let mut cache = PieceCache {
+            counts: [0; 8],
+            crowns: [None, None],
+            valid: true,
+        };
+        for (index, cell) in board.cells().iter().enumerate() {
+            if let Some(piece) = cell {
+                cache.add(index, *piece);
+            }
+        }
+        cache
+    }
+
+    fn add(&mut self, index: usize, piece: CrownfallPiece) {
+        self.counts[piece.code()] += 1;
+        if piece.kind() == CrownfallPieceKind::Crown {
+            self.crowns[piece.player() as usize] = Some(CrownfallBoardCell::new_index(index));
+        }
+    }
+
+    fn remove(&mut self, piece: CrownfallPiece) {
+        self.counts[piece.code()] -= 1;
+        if piece.kind() == CrownfallPieceKind::Crown {
+            self.crowns[piece.player() as usize] = None;
+        }
+    }
+
+    pub(crate) fn count(&self, kind: CrownfallPieceKind, player: CrownfallPlayerKind) -> u8 {
+        self.counts[kind as usize | ((player as usize) << 2)]
+    }
+
+    /// `player`'s Crown cell, `None` once captured (or before `valid`).
+    pub(crate) fn crown(&self, player: CrownfallPlayerKind) -> Option<CrownfallBoardCell> {
+        self.crowns[player as usize]
+    }
+
+    /// A player is only out of the fight once both their Knights and Spies
+    /// are depleted - Spy Capture works independently of Knights, so
+    /// holding spies alone is still a real offensive threat (README "Losing
+    /// the Game" - Attrition). Archers don't factor into attrition.
+    fn attrition_defeated(&self, player: CrownfallPlayerKind) -> bool {
+        self.count(CrownfallPieceKind::Knight, player) <= 1
+            && self.count(CrownfallPieceKind::Spy, player) <= 1
+    }
+}
+
+impl CrownfallGame {
+    /// Rebuilds the derived cache if it isn't known-valid - games built by
+    /// `new`/`from_parts` start valid; deserialized ones self-heal here on
+    /// their first applied action (and in `ai::CrownfallSearcher::search`).
+    pub(crate) fn ensure_cache(&mut self) {
+        if !self.cache.valid {
+            self.cache = PieceCache::rebuild(&self.board);
+        }
+    }
+
+    /// The single funnel for every board mutation on the applied-move path:
+    /// journals the overwritten value (for the AI's make/unmake), folds the
+    /// Zobrist keys of both the removed and added contents into the hash
+    /// delta, and keeps the derived piece cache in sync. A no-op write
+    /// never journals or double-XORs, which is what keeps overlapping
+    /// removals (possible under `all_captures_processed`, e.g. a
+    /// self-trapped Knight that would also be sacrificed) correct.
+    fn write_cell(&mut self, index: usize, new: Option<CrownfallPiece>, scratch: &mut MoveScratch) {
+        let cells = self.board.cells_mut();
+        let old = cells[index];
+        if old == new {
+            return;
+        }
+        scratch.journal.record(index, old);
+        if let Some(piece) = old {
+            scratch.hash_delta ^= hash::piece_key(index, piece);
+            self.cache.remove(piece);
+        }
+        if let Some(piece) = new {
+            scratch.hash_delta ^= hash::piece_key(index, piece);
+            self.cache.add(index, piece);
+        }
+        cells[index] = new;
+    }
+
+    /// Removes and returns the piece at `index` (if any) via `write_cell`.
+    fn take_cell(&mut self, index: usize, scratch: &mut MoveScratch) -> Option<CrownfallPiece> {
+        let old = self.board.cells()[index];
+        if old.is_some() {
+            self.write_cell(index, None, scratch);
+        }
+        old
+    }
 }
 
 /// Shorthand for building a starting layout.
@@ -610,14 +760,41 @@ impl CrownfallGame {
             (CrownfallBoardVariant::Normal, true) => standard_archers_layout(),
             (CrownfallBoardVariant::Grand, true) => grand_archers_layout(),
         };
-        let history = vec![position_hash(&board, CrownfallPlayerKind::White)];
+        // One fixed allocation for the game's life: the turn-limit draw
+        // bounds how far `history` can grow (plus a little headroom for the
+        // AI search pushing past the current turn), so reserving it up
+        // front avoids doubling reallocations on the GBA's simple
+        // allocator.
+        let mut history = Vec::with_capacity(rules.board.total_turn_limit() as usize + 1 + 8);
+        history.push(position_hash(&board, CrownfallPlayerKind::White));
         CrownfallGame {
+            cache: PieceCache::rebuild(&board),
             board,
             state: CrownfallGameState::Playing(CrownfallPlayState::WaitingForInput {
                 player: CrownfallPlayerKind::White,
             }),
             rules,
             history,
+            moves_since_capture: 0,
+        }
+    }
+
+    /// Assembles a game from an explicit board, state and rules - for tests
+    /// and tools that set up hand-built positions (the derived piece cache
+    /// is private, so a struct literal can't). `history` starts empty and
+    /// `moves_since_capture` at 0; both are public fields, so callers can
+    /// overwrite them afterwards.
+    pub fn from_parts(
+        board: CrownfallBoardState,
+        state: CrownfallGameState,
+        rules: CrownfallRules,
+    ) -> CrownfallGame {
+        CrownfallGame {
+            cache: PieceCache::rebuild(&board),
+            board,
+            state,
+            rules,
+            history: Vec::new(),
             moves_since_capture: 0,
         }
     }
@@ -720,7 +897,9 @@ impl CrownfallBoardState {
         let to_index = to.to_index();
         let piece = self.cells()[from_index]?;
         if self.cells()[to_index].is_some()
-            || !self.move_candidates(from, rules).contains(&(to_index as u8))
+            || !self
+                .move_candidates(from, rules)
+                .contains(&(to_index as u8))
         {
             return None;
         }
@@ -854,9 +1033,7 @@ impl CrownfallBoardState {
         let variant = self.variant();
         let target_index = target.to_index();
         let (_, target_y) = tables::coord(variant, target_index);
-        let is_attacker_knight = |cell: u8| {
-            matches!(self.cells()[cell as usize], Some(piece) if piece.player() == attacker && piece.kind() == CrownfallPieceKind::Knight)
-        };
+        let is_attacker_knight = |cell: u8| matches!(self.cells()[cell as usize], Some(piece) if piece.player() == attacker && piece.kind() == CrownfallPieceKind::Knight);
         let flank_count = tables::ortho(variant, target_index)
             .iter()
             .filter(|&&cell| {
@@ -869,24 +1046,6 @@ impl CrownfallBoardState {
             .filter(|&&cell| is_attacker_knight(cell))
             .count();
         flank_count + forward_count >= 3
-    }
-
-    /// Knight and Spy counts for both players in a single board pass -
-    /// `([white_knights, black_knights], [white_spies, black_spies])`. The
-    /// end-of-turn `is_attrition_defeated` check only needs these four
-    /// numbers, and it runs after every capture including AI-search nodes,
-    /// so one pass beats one full scan per (player, kind) pair.
-    fn knight_spy_counts(&self) -> ([u16; 2], [u16; 2]) {
-        let mut knights = [0u16; 2];
-        let mut spies = [0u16; 2];
-        for piece in self.cells().iter().flatten() {
-            match piece.kind() {
-                CrownfallPieceKind::Knight => knights[piece.player() as usize] += 1,
-                CrownfallPieceKind::Spy => spies[piece.player() as usize] += 1,
-                _ => {}
-            }
-        }
-        (knights, spies)
     }
 
     /// First pair among `attackers` whose piece kinds form a valid capture,
@@ -1212,19 +1371,6 @@ impl CrownfallBoardState {
         (captures, count)
     }
 
-    /// A player is only out of the fight once both their Knights and Spies are
-    /// depleted - Spy Capture works independently of Knights, so holding
-    /// spies alone is still a real offensive threat (README "Losing the
-    /// Game" - Attrition). Archers don't factor into attrition. Takes the
-    /// counts from a `knight_spy_counts` pass the caller already made.
-    fn is_attrition_defeated(
-        knights: &[u16; 2],
-        spies: &[u16; 2],
-        player: CrownfallPlayerKind,
-    ) -> bool {
-        knights[player as usize] <= 1 && spies[player as usize] <= 1
-    }
-
     /// True if `player` has at least one legal move this turn that results in
     /// a capture of an enemy piece (crown capture, ordinary Knight/Spy
     /// capture, or an Archer's ranged shot) - used to enforce
@@ -1326,7 +1472,8 @@ impl CrownfallGame {
         &mut self,
         action: CrownfallPlayerAction,
     ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
-        self.apply_action_with_logging(action, true, true)
+        // Real gameplay never rolls a move back, so the journal is discarded.
+        self.apply_action_with_logging(action, true, true, &mut MoveScratch::new())
     }
 
     /// Applies `action` without logging the move/capture, used by the AI's search
@@ -1340,11 +1487,15 @@ impl CrownfallGame {
     /// machinery `apply_move` would re-run) whenever any exist - so the
     /// re-check could never fail, and it costs a full own-moves capture scan
     /// per quiet move applied.
+    /// `scratch` collects the journal of overwritten cells, which is what
+    /// lets the search undo the move without a whole-board copy (see
+    /// `CellJournal::undo`).
     pub(crate) fn apply_action_quiet(
         &mut self,
         action: CrownfallPlayerAction,
+        scratch: &mut MoveScratch,
     ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
-        self.apply_action_with_logging(action, false, false)
+        self.apply_action_with_logging(action, false, false, scratch)
     }
 
     fn apply_action_with_logging(
@@ -1352,7 +1503,20 @@ impl CrownfallGame {
         action: CrownfallPlayerAction,
         log_moves: bool,
         validate_mandatory_capture: bool,
+        scratch: &mut MoveScratch,
     ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
+        if log_moves {
+            // Real gameplay actions always recount rather than trusting the
+            // cache: `board` is a public field and at least one UI caller
+            // writes cells directly (the client's optimistic drag moves),
+            // which the cache can't observe. One board scan per real move is
+            // what the old per-capture counting cost anyway. The AI's quiet
+            // path skips this - the search owns its game clone, so nothing
+            // can touch the board behind the incrementally-maintained cache.
+            self.cache = PieceCache::rebuild(&self.board);
+        } else {
+            self.ensure_cache();
+        }
         match &self.state {
             CrownfallGameState::Playing(play_state) => {
                 if play_state.player() != action.player() {
@@ -1365,11 +1529,16 @@ impl CrownfallGame {
             CrownfallGameState::Draw(_) => return Err(CrownfallError::GameOver(action.player())),
         }
         let result = match action {
-            CrownfallPlayerAction::Move { player, from, to } => {
-                self.apply_move(player, from, to, log_moves, validate_mandatory_capture)
-            }
+            CrownfallPlayerAction::Move { player, from, to } => self.apply_move(
+                player,
+                from,
+                to,
+                log_moves,
+                validate_mandatory_capture,
+                scratch,
+            ),
             CrownfallPlayerAction::KnightRemoval { player, at } => {
-                self.apply_knight_removal(player, at)
+                self.apply_knight_removal(player, at, scratch)
             }
             CrownfallPlayerAction::Surrender { player } => {
                 self.state = CrownfallGameState::Victory(player.opposite(), WinReason::Surrender);
@@ -1399,6 +1568,7 @@ impl CrownfallGame {
         to: CrownfallBoardCell,
         log_moves: bool,
         validate_mandatory_capture: bool,
+        scratch: &mut MoveScratch,
     ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
         let from_index = from.to_index();
         let to_index = to.to_index();
@@ -1435,11 +1605,11 @@ impl CrownfallGame {
             false
         };
         if must_capture_rule_enabled && validate_mandatory_capture {
-            let mut scratch = self.board;
-            scratch.cells_mut()[from_index] = None;
-            scratch.cells_mut()[to_index] = Some(piece);
+            let mut probe = self.board;
+            probe.cells_mut()[from_index] = None;
+            probe.cells_mut()[to_index] = Some(piece);
             let this_move_captures =
-                scratch.move_captures_something(to, player, piece.kind(), self.rules);
+                probe.move_captures_something(to, player, piece.kind(), self.rules);
             if !this_move_captures && self.board.has_available_capture(player, self.rules) {
                 return Err(CrownfallError::CaptureRequired(player));
             }
@@ -1455,12 +1625,11 @@ impl CrownfallGame {
             );
         }
 
-        // The move's own contribution to the incremental position hash -
-        // capture resolution below folds any removals into this as they
-        // happen (see `resolve_continuation`/`remove_piece`).
-        let mut hash_delta = hash::piece_key(from_index, piece) ^ hash::piece_key(to_index, piece);
-        self.board.cells_mut()[from_index] = None;
-        self.board.cells_mut()[to_index] = Some(piece);
+        // Everything from here on mutates through `write_cell`/`take_cell`,
+        // which fold each change's Zobrist keys into `scratch.hash_delta`
+        // (see `resolve_continuation`) and journal it for make/unmake.
+        self.write_cell(from_index, None, scratch);
+        self.write_cell(to_index, Some(piece), scratch);
 
         // Crown-loss has the highest priority of any capture and is checked first,
         // even ahead of a capture this same move would otherwise complete (README
@@ -1468,7 +1637,7 @@ impl CrownfallGame {
         // This holds regardless of `all_captures_processed`: crown loss always ends
         // the game immediately, so there's nothing left to "also process".
         if self.board.check_own_crown_trap(to, player, self.rules) {
-            self.board.cells_mut()[to_index] = None;
+            self.take_cell(to_index, scratch);
             #[cfg(feature = "log")]
             if log_moves {
                 log::info!(
@@ -1493,16 +1662,9 @@ impl CrownfallGame {
             false
         };
         if all_captures_processed_enabled {
-            self.apply_move_all_captures_processed(
-                player,
-                from,
-                to,
-                piece,
-                log_moves,
-                &mut hash_delta,
-            )
+            self.apply_move_all_captures_processed(player, from, to, piece, log_moves, scratch)
         } else {
-            self.apply_move_sequential(player, from, to, piece, log_moves, &mut hash_delta)
+            self.apply_move_sequential(player, from, to, piece, log_moves, scratch)
         }
     }
 
@@ -1515,12 +1677,12 @@ impl CrownfallGame {
         to: CrownfallBoardCell,
         piece: CrownfallPiece,
         log_moves: bool,
-        hash_delta: &mut u64,
+        scratch: &mut MoveScratch,
     ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
         let to_index = to.to_index();
 
         if let Some(surrounded_crown) = self.board.check_crown_capture(to, player, self.rules) {
-            self.board.cells_mut()[surrounded_crown.to_index()] = None;
+            self.take_cell(surrounded_crown.to_index(), scratch);
             #[cfg(feature = "log")]
             if log_moves {
                 log::info!(
@@ -1539,7 +1701,7 @@ impl CrownfallGame {
         // Spy Capture applies "even if the enemy moved there" - the piece just moved
         // can walk straight into a pre-existing enemy Spy pincer and be captured by it.
         if self.board.check_self_spy_trap(to, player, self.rules) {
-            remove_piece(&mut self.board, to_index, hash_delta);
+            self.take_cell(to_index, scratch);
             #[cfg(feature = "log")]
             if log_moves {
                 log::info!(
@@ -1552,7 +1714,7 @@ impl CrownfallGame {
                 .board
                 .find_attacking_pair(to, player.opposite(), self.rules)
                 .expect("check_self_spy_trap confirmed an attacking pair");
-            self.state = self.resolve_after_removal(player, true, *hash_delta);
+            self.state = self.resolve_after_removal(player, true, scratch.hash_delta);
             return Ok(Some(CrownfallTurnResult::Capture {
                 player,
                 last_move_from: from,
@@ -1583,9 +1745,9 @@ impl CrownfallGame {
                 to,
                 piece,
                 log_moves,
-                hash_delta,
+                scratch,
             );
-            self.state = self.resolve_after_removal(player, true, *hash_delta);
+            self.state = self.resolve_after_removal(player, true, scratch.hash_delta);
             return Ok(Some(turn_result));
         }
 
@@ -1596,9 +1758,9 @@ impl CrownfallGame {
                 from,
                 to,
                 log_moves,
-                hash_delta,
+                scratch,
             );
-            self.state = self.resolve_after_removal(player, true, *hash_delta);
+            self.state = self.resolve_after_removal(player, true, scratch.hash_delta);
             return Ok(Some(turn_result));
         }
 
@@ -1609,7 +1771,7 @@ impl CrownfallGame {
             &mut self.history,
             &mut self.moves_since_capture,
             false,
-            *hash_delta,
+            scratch.hash_delta,
         );
         Ok(Some(CrownfallTurnResult::PieceMove { player, from, to }))
     }
@@ -1628,7 +1790,7 @@ impl CrownfallGame {
         to: CrownfallBoardCell,
         piece: CrownfallPiece,
         log_moves: bool,
-        hash_delta: &mut u64,
+        scratch: &mut MoveScratch,
     ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
         let to_index = to.to_index();
         let snapshot = self.board;
@@ -1652,7 +1814,7 @@ impl CrownfallGame {
         let mut turn_result = None;
 
         if let Some(surrounded_crown) = crown_capture {
-            self.board.cells_mut()[surrounded_crown.to_index()] = None;
+            self.take_cell(surrounded_crown.to_index(), scratch);
             #[cfg(feature = "log")]
             if log_moves {
                 log::info!(
@@ -1669,7 +1831,7 @@ impl CrownfallGame {
         }
 
         if self_trapped {
-            remove_piece(&mut self.board, to_index, hash_delta);
+            self.take_cell(to_index, scratch);
             #[cfg(feature = "log")]
             if log_moves {
                 log::info!(
@@ -1699,7 +1861,7 @@ impl CrownfallGame {
                 to,
                 piece,
                 log_moves,
-                hash_delta,
+                scratch,
             );
             any_capture = true;
             turn_result.get_or_insert(result);
@@ -1712,7 +1874,7 @@ impl CrownfallGame {
                 from,
                 to,
                 log_moves,
-                hash_delta,
+                scratch,
             );
             any_capture = true;
             turn_result.get_or_insert(result);
@@ -1726,7 +1888,7 @@ impl CrownfallGame {
         }
 
         if any_capture {
-            self.state = self.resolve_after_removal(player, true, *hash_delta);
+            self.state = self.resolve_after_removal(player, true, scratch.hash_delta);
             return Ok(turn_result);
         }
 
@@ -1737,7 +1899,7 @@ impl CrownfallGame {
             &mut self.history,
             &mut self.moves_since_capture,
             false,
-            *hash_delta,
+            scratch.hash_delta,
         );
         Ok(Some(CrownfallTurnResult::PieceMove { player, from, to }))
     }
@@ -1758,11 +1920,12 @@ impl CrownfallGame {
         to: CrownfallBoardCell,
         piece: CrownfallPiece,
         log_moves: bool,
-        hash_delta: &mut u64,
+        scratch: &mut MoveScratch,
     ) -> CrownfallTurnResult {
         let mut turn_result = None;
         for capture in captures {
-            let target_kind = remove_piece(&mut self.board, capture.target.to_index(), hash_delta)
+            let target_kind = self
+                .take_cell(capture.target.to_index(), scratch)
                 .map(|target_piece| target_piece.kind());
             #[cfg(feature = "log")]
             if log_moves {
@@ -1800,7 +1963,7 @@ impl CrownfallGame {
                 } else {
                     to
                 };
-                remove_piece(&mut self.board, lost_knight.to_index(), hash_delta);
+                self.take_cell(lost_knight.to_index(), scratch);
                 #[cfg(feature = "log")]
                 if log_moves {
                     log::info!(
@@ -1831,12 +1994,11 @@ impl CrownfallGame {
         from: CrownfallBoardCell,
         to: CrownfallBoardCell,
         log_moves: bool,
-        hash_delta: &mut u64,
+        scratch: &mut MoveScratch,
     ) -> CrownfallTurnResult {
         let mut turn_result = None;
         for &(target, ally) in captures {
-            let target_kind =
-                remove_piece(&mut self.board, target.to_index(), hash_delta).map(|p| p.kind());
+            let target_kind = self.take_cell(target.to_index(), scratch).map(|p| p.kind());
             #[cfg(feature = "log")]
             if log_moves {
                 log::info!(
@@ -1872,12 +2034,13 @@ impl CrownfallGame {
         &mut self,
         player: CrownfallPlayerKind,
         captured: bool,
-        hash_delta: u64,
+        hash_delta: u32,
     ) -> CrownfallGameState {
-        let (knights, spies) = self.board.knight_spy_counts();
-        if !self.rules.has_archers()
-            && CrownfallBoardState::is_attrition_defeated(&knights, &spies, player.opposite())
-        {
+        debug_assert!(
+            self.cache.valid,
+            "the apply path runs behind ensure_cache, so the counts are current"
+        );
+        if !self.rules.has_archers() && self.cache.attrition_defeated(player.opposite()) {
             CrownfallGameState::Victory(player, WinReason::Attrition)
         } else {
             resolve_continuation(
@@ -1896,6 +2059,7 @@ impl CrownfallGame {
         &mut self,
         player: CrownfallPlayerKind,
         at: CrownfallBoardCell,
+        scratch: &mut MoveScratch,
     ) -> Result<Option<CrownfallTurnResult>, CrownfallError> {
         // Same deserialized-index guard as `apply_move`.
         if at.to_index() >= tables::cell_count(self.rules.board) {
@@ -1905,8 +2069,7 @@ impl CrownfallGame {
             None => Err(CrownfallError::EmptyKnightRemoval(player, at)),
             Some(cell) => {
                 if cell.player() == player {
-                    let mut hash_delta = 0;
-                    remove_piece(&mut self.board, at.to_index(), &mut hash_delta);
+                    self.take_cell(at.to_index(), scratch);
                     self.state = resolve_continuation(
                         &self.board,
                         self.rules.board,
@@ -1914,7 +2077,7 @@ impl CrownfallGame {
                         &mut self.history,
                         &mut self.moves_since_capture,
                         true,
-                        hash_delta,
+                        scratch.hash_delta,
                     );
                     Ok(None)
                 } else {
@@ -2005,6 +2168,54 @@ mod tests {
                     "incremental hash diverged from full recompute under {rules:?}"
                 );
             }
+        }
+    }
+
+    /// Plays AI self-play through `apply_action_quiet` - the path that
+    /// trusts and incrementally maintains the piece cache instead of
+    /// recounting per action (unlike `apply_action`) - and asserts the
+    /// cache matches a fresh recount after every move. Depth-2 self-play
+    /// reaches captures, Knight sacrifices, spy traps and Archer shots,
+    /// which are exactly the mutations `write_cell` must track.
+    fn assert_cache_parity_over_selfplay(rules: CrownfallRules) {
+        let mut game = CrownfallGame::new(rules);
+        for _ in 0..80 {
+            let CrownfallGameState::Playing(play_state) = game.state else {
+                break;
+            };
+            let player = play_state.player();
+            let Some(action) =
+                ai::best_move(&game, player, 2, ai::CrownfallPersonality::Aggressive)
+            else {
+                break;
+            };
+            game.apply_action_quiet(action, &mut MoveScratch::new())
+                .expect("AI produces legal moves");
+            let rebuilt = PieceCache::rebuild(&game.board);
+            assert!(game.cache.valid, "cache must stay valid under {rules:?}");
+            assert_eq!(
+                game.cache.counts, rebuilt.counts,
+                "piece counts diverged from a full recount under {rules:?}"
+            );
+            assert_eq!(
+                game.cache.crowns, rebuilt.crowns,
+                "crown cells diverged from a full recount under {rules:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn incremental_cache_matches_full_recount() {
+        for rules in [
+            CrownfallRules::standard(),
+            CrownfallRules::mini(),
+            CrownfallRules::grand(),
+            CrownfallRules::standard_archers(),
+            CrownfallRules::standard_mandatory_capture(),
+            CrownfallRules::standard_all_captures_processed(),
+            CrownfallRules::standard_diagonal_knights(),
+        ] {
+            assert_cache_parity_over_selfplay(rules);
         }
     }
 

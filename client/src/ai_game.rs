@@ -1,6 +1,6 @@
 use crate::game_renderer::{BoardRenderer, CELL_SIZE, PieceRenderer};
 use crate::{BACKGROUND, SceneName, SceneResult};
-use eb_crownfall_engine::ai::{CrownfallDifficulty, CrownfallPersonality, best_move};
+use eb_crownfall_engine::ai::{CrownfallDifficulty, CrownfallPersonality, CrownfallSearcher};
 use eb_crownfall_engine::{
     CrownfallBoardCell, CrownfallBoardVariant, CrownfallGame, CrownfallGameState, CrownfallPiece,
     CrownfallPlayState, CrownfallPlayerAction, CrownfallPlayerKind, CrownfallRules,
@@ -40,6 +40,9 @@ pub struct AiGameScene {
     rules: CrownfallRules,
     difficulty: CrownfallDifficulty,
     personality: CrownfallPersonality,
+    /// Persistent across the AI's turns, so its transposition table stays
+    /// warm from move to move (see `CrownfallSearcher`).
+    searcher: CrownfallSearcher,
     drag: Option<DragState>,
     ai_timer: Option<Timer>,
     animation: Option<MoveAnimation>,
@@ -62,6 +65,7 @@ impl AiGameScene {
             rules,
             difficulty,
             personality,
+            searcher: CrownfallSearcher::new(),
             drag: None,
             ai_timer: None,
             animation: None,
@@ -258,8 +262,12 @@ impl Scene<SceneResult, SceneName> for AiGameScene {
         {
             self.ai_timer = None;
             if is_ais_turn(&self.game)
-                && let Some(action) =
-                    best_move(&self.game, AI, self.difficulty.depth(), self.personality)
+                && let Some(action) = self.searcher.best_move(
+                    &self.game,
+                    AI,
+                    self.difficulty.depth(),
+                    self.personality,
+                )
                 && let Ok((next, turn_result)) = self.game.clone().handle_player_action(action)
             {
                 self.animate_or_apply(next, turn_result);

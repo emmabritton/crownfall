@@ -451,6 +451,48 @@ impl Default for CrownfallBoardState {
     }
 }
 
+/// Derived bookkeeping for a game's board: per-(player, kind) piece counts
+/// and both Crown positions, maintained incrementally by the cell-write
+/// funnel in `impls.rs` so the attrition check and the AI's evaluation and
+/// move ordering never rescan the whole board. Purely a cache of what
+/// `board` already encodes, so it is skipped by serde, transparent to
+/// equality, and rebuilt from the board on first use whenever it isn't
+/// known-valid (deserialized games start invalid).
+#[derive(Clone, Copy, Debug)]
+pub struct PieceCache {
+    /// Piece counts indexed by `CrownfallPiece::code()` (kind + 4 * player).
+    pub(crate) counts: [u8; 8],
+    /// Each player's Crown cell (`None` once captured), indexed by
+    /// `CrownfallPlayerKind as usize`.
+    pub(crate) crowns: [Option<CrownfallBoardCell>; 2],
+    pub(crate) valid: bool,
+}
+
+impl PieceCache {
+    pub(crate) const INVALID: PieceCache = PieceCache {
+        counts: [0; 8],
+        crowns: [None, None],
+        valid: false,
+    };
+}
+
+impl Default for PieceCache {
+    fn default() -> PieceCache {
+        PieceCache::INVALID
+    }
+}
+
+/// The cache never affects game equality: it's derived data, and two games
+/// with identical boards must compare equal whether or not either has
+/// rebuilt its cache yet.
+impl PartialEq for PieceCache {
+    fn eq(&self, _: &PieceCache) -> bool {
+        true
+    }
+}
+
+impl Eq for PieceCache {}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CrownfallGame {
@@ -458,13 +500,20 @@ pub struct CrownfallGame {
     pub state: CrownfallGameState,
     pub rules: CrownfallRules,
     /// Hashes of past positions (board + player to move), used to detect
-    /// threefold repetition. Grows for the lifetime of the game.
+    /// threefold repetition. Grows for the lifetime of the game. 32-bit
+    /// Zobrist hashes (see `hash.rs` for why that's collision-safe here) -
+    /// half the memory and half the XOR/compare work on the 32-bit-only
+    /// ARM7TDMI.
     #[cfg_attr(feature = "serde", serde(default))]
-    pub history: Vec<u64>,
+    pub history: Vec<u32>,
     /// Turns played since the last capture, used for the no-progress draw
     /// rule. Reset to 0 on every capture.
     #[cfg_attr(feature = "serde", serde(default))]
     pub moves_since_capture: u16,
+    /// Derived piece counts and Crown positions (see [`PieceCache`]).
+    /// Never serialized; deserialized games rebuild it on first use.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub(crate) cache: PieceCache,
 }
 
 /// A board position as a cell index. Stored as `u8` (the largest board has

@@ -105,6 +105,10 @@ fn play_game(
     let mut game = CrownfallGame::new(rules);
     let mut rng = Rng::new(seed);
     let mut turns = 0usize;
+    // One persistent searcher per side, indexed by `player as usize`, so
+    // each side's transposition table stays warm across its turns (the
+    // sides may run different personalities, whose scores don't mix).
+    let mut searchers = [ai::CrownfallSearcher::new(), ai::CrownfallSearcher::new()];
 
     loop {
         let Some(player) = current_player(&game) else {
@@ -138,7 +142,7 @@ fn play_game(
             } else {
                 (black_depth, black_personality)
             };
-            match ai::best_move(&game, player, depth, personality) {
+            match searchers[player as usize].best_move(&game, player, depth, personality) {
                 Some(action) => action,
                 None => {
                     return GameResult {
@@ -336,18 +340,16 @@ fn main() {
     // waiving the Knight Capture self-sacrifice at 3-in-the-arc shifts win
     // reasons, game length, and the White/Black split.
     let mass_capture = CrownfallRules::standard_knight_mass_capture();
-    let mut mass = BatchStats::new(
-        "[knight_mass_capture] Symmetric depth 3 vs 3, randomized 4-ply openings",
-    );
+    let mut mass =
+        BatchStats::new("[knight_mass_capture] Symmetric depth 3 vs 3, randomized 4-ply openings");
     for seed in 0..200u64 {
         let result = play_game(seed + 1, 3, 3, 4, mass_capture, bal, bal);
         mass.record(&result);
     }
     mass.print();
 
-    let mut mass_deep = BatchStats::new(
-        "[knight_mass_capture] Symmetric depth 4 vs 4, randomized 4-ply openings",
-    );
+    let mut mass_deep =
+        BatchStats::new("[knight_mass_capture] Symmetric depth 4 vs 4, randomized 4-ply openings");
     for seed in 0..60u64 {
         let result = play_game(seed + 10_000, 4, 4, 4, mass_capture, bal, bal);
         mass_deep.record(&result);
@@ -366,10 +368,14 @@ fn main() {
         ("Aggressive vs Defensive", Aggressive, Defensive),
         ("Aggressive vs Balanced", Aggressive, Balanced),
     ];
-    for (rules_label, rules) in [("standard", standard), ("knight_mass_capture", mass_capture)] {
+    for (rules_label, rules) in [
+        ("standard", standard),
+        ("knight_mass_capture", mass_capture),
+    ] {
         for (label, white_p, black_p) in personality_matchups {
-            let mut stats =
-                BatchStats::new(format!("[{rules_label}] {label}, depth 3 vs 3, 4-ply openings"));
+            let mut stats = BatchStats::new(format!(
+                "[{rules_label}] {label}, depth 3 vs 3, 4-ply openings"
+            ));
             for seed in 0..200u64 {
                 let result = play_game(seed + 1, 3, 3, 4, rules, white_p, black_p);
                 stats.record(&result);
