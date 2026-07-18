@@ -115,6 +115,7 @@ fn play_game(
         ..Default::default()
     };
 
+    #[allow(clippy::while_let_loop)]
     loop {
         let Some(player) = current_player(&game) else {
             break;
@@ -165,16 +166,15 @@ fn play_game(
         // Track whether either Crown just got captured (the other side's
         // capture removed it) - `removed` is the target cell, so check
         // whether the pre-move occupant there was a Crown.
-        if let Some(CrownfallTurnResult::Capture { removed, .. }) = turn_result {
-            if let Some(piece) = game.board.cells()[removed.to_index()]
-                && piece.kind() == CrownfallPieceKind::Crown
-            {
-                let track = match piece.player() {
-                    CrownfallPlayerKind::White => &mut white,
-                    CrownfallPlayerKind::Black => &mut black,
-                };
-                track.captured = true;
-            }
+        if let Some(CrownfallTurnResult::Capture { removed, .. }) = turn_result
+            && let Some(piece) = game.board.cells()[removed.to_index()]
+            && piece.kind() == CrownfallPieceKind::Crown
+        {
+            let track = match piece.player() {
+                CrownfallPlayerKind::White => &mut white,
+                CrownfallPlayerKind::Black => &mut black,
+            };
+            track.captured = true;
         }
 
         game = next;
