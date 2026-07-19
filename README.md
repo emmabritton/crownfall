@@ -131,7 +131,9 @@ s
 
 ##### Crown
 
-The Crown may act as a knight for captures, however it's capture takes priority. So if you have
+The Crown may act as the *stationary* partner in a Knight Capture — a Knight that moves to complete a Crown+Knight pincer captures normally (and the sacrifice, when one is due, falls on the moved Knight, never the Crown). The Crown itself can never initiate a capture: moving the Crown into a position that would complete a pincer springs nothing. (Surrounding the enemy Crown is the exception — that's a Crown capture, which doesn't care which piece just moved.)
+
+The Crown's own capture also takes priority over anything its move would do. So if you have
 
 s = black spy
 C = white crown
@@ -142,13 +144,13 @@ K = white knight
 s
  C
 ```
-and the crown moves up to capture the top spy with the knight
+and the crown moves up
 ```
  sK
 sC
 
 ```
-instead the spies capturing the crown takes priority and black wins.
+the spies capturing the crown takes priority and black wins.
 
 ##### Archer Capture
 
@@ -159,7 +161,7 @@ Only available under the [Archers rule variant](#rule-variants). An Archer captu
 A player loses immediately if either condition is met:
 
 1. **Crown captured:** The Crown is surrounded by two enemy Spies, by two enemy Knights or by an enemy Knight and Crown, on any two of its four orthogonally adjacent tiles. Unlike an ordinary Knight Capture, a Crown capture is not bound by the Knight forward-arc restriction at all — a Knight on any side (even directly beside or behind the Crown) counts, and it doesn't matter which piece just moved. This check has the **highest priority** — if it is ever true, the game ends immediately before any other capture or condition is evaluated.
-2. **Attrition:** The player has one or fewer Knights **and** one or fewer Spies remaining. Spy Capture works independently of Knights, so holding spies alone still keeps a player in the fight — attrition only applies once both are nearly gone. This condition is ignored entirely in the Archers variant: an Archer can still capture with no Knights or Spies left, so being reduced to Archers alone is not a loss.
+2. **Attrition:** The player has one or fewer Knights **and** one or fewer Spies remaining. Spy Capture works independently of Knights, so holding spies alone still keeps a player in the fight — attrition only applies once both are nearly gone. The condition is checked for **both** players whenever a piece leaves the board — a player whose own move drops them below the threshold (via the Knight-sacrifice cost of a Knight Capture, or by walking into an enemy Spy pincer) loses immediately on their own turn; if a single move depletes both players at once, the moving player wins. This condition is ignored entirely in the Archers variant: an Archer can still capture with no Knights or Spies left, so being reduced to Archers alone is not a loss.
 3. **Surrender:** A player can concede the game at any time.
 
 #### Draws

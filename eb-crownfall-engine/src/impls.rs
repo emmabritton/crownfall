@@ -915,7 +915,7 @@ impl CrownfallBoardState {
         if scratch.check_own_crown_trap(to, player, rules) {
             return Some(MoveCapturePreview {
                 captured: Vec::new(),
-                mover_captured: true,
+                mover_captured: MoverCaptured::CrownTrap,
             });
         }
 
@@ -937,7 +937,7 @@ impl CrownfallBoardState {
         }
 
         if scratch.check_self_spy_trap(to, player, rules) {
-            preview.mover_captured = true;
+            preview.mover_captured = MoverCaptured::SpyTrap;
             if !all_captures_processed_enabled {
                 return Some(preview);
             }
@@ -948,6 +948,28 @@ impl CrownfallBoardState {
             preview
                 .captured
                 .extend(piece_captures[..count].iter().map(|c| c.target));
+            // Mirror `apply_piece_captures`' sacrifice rule: a Knight-kind
+            // pincer taking an enemy Knight costs the moved Knight too,
+            // unless the `knight_mass_capture` toggle waives it.
+            let mass_capture_enabled = matches!(
+                rules.ruleset,
+                CrownfallRuleset::Custom {
+                    knight_mass_capture: true,
+                    ..
+                }
+            );
+            let sacrificed = piece_captures[..count].iter().any(|capture| {
+                capture.kind == CaptureKind::Knight
+                    && matches!(
+                        scratch.cells()[capture.target.to_index()],
+                        Some(target) if target.kind() == CrownfallPieceKind::Knight
+                    )
+                    && !(mass_capture_enabled
+                        && scratch.has_mass_knight_arc(capture.target, player, rules))
+            });
+            if sacrificed && preview.mover_captured == MoverCaptured::No {
+                preview.mover_captured = MoverCaptured::KnightAttack;
+            }
             if !all_captures_processed_enabled {
                 return Some(preview);
             }
@@ -1308,6 +1330,17 @@ impl CrownfallBoardState {
         };
         let mut captures = [placeholder; MAX_SCAN_CELLS];
         let mut count = 0;
+        // The Crown never initiates a capture: it can serve as the stationary
+        // partner in a Knight's pincer, but a pincer completed by the Crown
+        // itself moving springs nothing (README "Crown"). Capturing the
+        // enemy Crown is exempt - that's a surround, checked separately in
+        // `check_crown_capture` regardless of which piece moved.
+        if matches!(
+            self.cells()[to.to_index()],
+            Some(piece) if piece.kind() == CrownfallPieceKind::Crown
+        ) {
+            return (captures, 0);
+        }
         let (cells, len) = self.capture_scan_cells(to, attacker, rules);
         for &index in &cells[..len] {
             let Some(piece) = self.cells()[index as usize] else {
@@ -1743,7 +1776,6 @@ impl CrownfallGame {
                 player,
                 from,
                 to,
-                piece,
                 log_moves,
                 scratch,
             );
@@ -1859,7 +1891,6 @@ impl CrownfallGame {
                 player,
                 from,
                 to,
-                piece,
                 log_moves,
                 scratch,
             );
@@ -1909,16 +1940,12 @@ impl CrownfallGame {
     /// the `TurnResult` for the first capture found (matching the existing
     /// single-result-per-move reporting shape).
     #[cfg_attr(not(feature = "log"), allow(unused_variables))]
-    // Private helper threading one move's context through; a params struct
-    // would just rename the same eight things.
-    #[allow(clippy::too_many_arguments)]
     fn apply_piece_captures(
         &mut self,
         captures: &[PieceCapture],
         player: CrownfallPlayerKind,
         from: CrownfallBoardCell,
         to: CrownfallBoardCell,
-        piece: CrownfallPiece,
         log_moves: bool,
         scratch: &mut MoveScratch,
     ) -> CrownfallTurnResult {
@@ -1958,11 +1985,10 @@ impl CrownfallGame {
                 && target_kind == Some(CrownfallPieceKind::Knight)
                 && !sacrifice_waived
             {
-                let lost_knight = if piece.kind() == CrownfallPieceKind::Crown {
-                    second_attacker
-                } else {
-                    to
-                };
+                // Always the knight that just moved: the Crown never
+                // initiates a capture (`check_piece_captures`), so in a
+                // Crown-partnered pincer the mover is the Knight.
+                let lost_knight = to;
                 self.take_cell(lost_knight.to_index(), scratch);
                 #[cfg(feature = "log")]
                 if log_moves {
@@ -2024,7 +2050,10 @@ impl CrownfallGame {
     /// removed this move: attrition still takes priority over an ordinary
     /// continuation, exactly as under the sequential rules - this variant
     /// only changes *which* pieces get removed, not the priority of the
-    /// resulting `GameState`.
+    /// resulting `GameState`. Both sides are checked - the opponent first
+    /// (so the mover wins if a capture depletes both at once), then the
+    /// mover, whose own Knight sacrifice or walk into a Spy pincer can
+    /// drop them below the threshold on their own turn.
     ///
     /// Attrition is skipped entirely under the `Archers` ruleset: it only
     /// counts Knights and Spies, but an Archer-owning side can still capture
@@ -2042,6 +2071,14 @@ impl CrownfallGame {
         );
         if !self.rules.has_archers() && self.cache.attrition_defeated(player.opposite()) {
             CrownfallGameState::Victory(player, WinReason::Attrition)
+        } else if !self.rules.has_archers() && self.cache.attrition_defeated(player) {
+            // The mover can deplete *themselves* below the threshold too - a
+            // Knight sacrifice, or walking into an enemy Spy pincer. That
+            // loss is declared now, not deferred to the next removal; the
+            // opponent is checked first so mutual depletion favours the
+            // mover (see the `knight_capture_leaving_one_knight_each_side_
+            // is_not_a_special_case` test).
+            CrownfallGameState::Victory(player.opposite(), WinReason::Attrition)
         } else {
             resolve_continuation(
                 &self.board,
@@ -2070,15 +2107,10 @@ impl CrownfallGame {
             Some(cell) => {
                 if cell.player() == player {
                     self.take_cell(at.to_index(), scratch);
-                    self.state = resolve_continuation(
-                        &self.board,
-                        self.rules.board,
-                        player.opposite(),
-                        &mut self.history,
-                        &mut self.moves_since_capture,
-                        true,
-                        scratch.hash_delta,
-                    );
+                    // Removing one's own knight can drop the remover below
+                    // the attrition threshold, so this resolves through the
+                    // same both-sides check as every other removal.
+                    self.state = self.resolve_after_removal(player, true, scratch.hash_delta);
                     Ok(None)
                 } else {
                     Err(CrownfallError::EnemyKnightRemoval(player, at))

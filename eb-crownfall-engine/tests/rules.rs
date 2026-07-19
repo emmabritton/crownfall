@@ -437,28 +437,51 @@ fn knight_capture_invalid_when_attackers_are_beside_target() {
 
 /// A Crown paired with a Knight can capture from either orthogonal side
 /// (unrestricted by the Knight forward-arc rule, since the mover isn't a
-/// Knight). When the captured piece is itself a Knight, the *other*
-/// attacker is sacrificed rather than the Crown.
+/// Knight). When the captured piece is itself a Knight, the sacrifice
+/// falls on the moved Knight - never the Crown partner.
 #[test]
 fn crown_partnered_knight_capture_sacrifices_the_knight_not_the_crown() {
     let mut board = empty_board();
     place(&mut board, 3, 3, Knight, Black); // target
-    place(&mut board, 3, 4, Knight, White); // partner, pre-placed
-    place(&mut board, 2, 4, Crown, White); // will move to (2,3)
+    place(&mut board, 2, 3, Crown, White); // partner, beside the target
+    place(&mut board, 4, 5, Knight, White); // will move to (4,4), diagonally ahead
     let mut game = game_with(board, White);
 
-    mv(&mut game, White, (2, 4), (2, 3)).unwrap();
+    mv(&mut game, White, (4, 5), (4, 4)).unwrap();
     assert_eq!(piece_at(&game.board, 3, 3), None, "target captured");
     assert_eq!(
-        piece_at(&game.board, 3, 4),
+        piece_at(&game.board, 4, 4),
         None,
-        "partner knight sacrificed"
+        "moved knight sacrificed"
     );
     assert_eq!(
         piece_at(&game.board, 2, 3),
         Some(CrownfallPiece::new(Crown, White)),
         "crown survives the trade"
     );
+}
+
+/// The Crown can only ever be the *stationary* partner in a pincer: a
+/// pincer position the Crown itself completes by moving springs nothing -
+/// the Crown never initiates a capture.
+#[test]
+fn crown_moving_into_pincer_position_does_not_capture() {
+    let mut board = empty_board();
+    place(&mut board, 3, 3, Knight, Black); // would-be target
+    place(&mut board, 3, 4, Knight, White); // partner already in place
+    place(&mut board, 2, 4, Crown, White); // will move to (2,3), beside the target
+    let mut game = game_with(board, White);
+
+    let result = mv(&mut game, White, (2, 4), (2, 3)).unwrap();
+    assert_eq!(
+        piece_at(&game.board, 3, 3),
+        Some(CrownfallPiece::new(Knight, Black)),
+        "a pincer completed by the Crown moving must not capture"
+    );
+    assert!(matches!(
+        result,
+        Some(CrownfallTurnResult::PieceMove { .. })
+    ));
 }
 
 /// The Knight-Capture pincer geometry (Crown+Knight) can also capture a
@@ -468,14 +491,14 @@ fn crown_partnered_knight_capture_sacrifices_the_knight_not_the_crown() {
 fn crown_partnered_capture_of_a_spy_has_no_sacrifice() {
     let mut board = empty_board();
     place(&mut board, 3, 3, Spy, Black); // target (not a Knight)
-    place(&mut board, 3, 4, Knight, White);
-    place(&mut board, 2, 4, Crown, White);
+    place(&mut board, 2, 3, Crown, White); // partner, beside the target
+    place(&mut board, 4, 5, Knight, White); // will move to (4,4), diagonally ahead
     let mut game = game_with(board, White);
 
-    mv(&mut game, White, (2, 4), (2, 3)).unwrap();
+    mv(&mut game, White, (4, 5), (4, 4)).unwrap();
     assert_eq!(piece_at(&game.board, 3, 3), None, "spy captured");
     assert_eq!(
-        piece_at(&game.board, 3, 4),
+        piece_at(&game.board, 4, 4),
         Some(CrownfallPiece::new(Knight, White)),
         "no sacrifice when the target wasn't a Knight"
     );

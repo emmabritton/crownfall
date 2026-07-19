@@ -601,6 +601,28 @@ pub enum CrownfallTurnResult {
     },
 }
 
+/// Why (if at all) the moving piece would itself end up removed by a
+/// candidate move - see `MoveCapturePreview::mover_captured`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum MoverCaptured {
+    /// The mover survives the move.
+    #[default]
+    No,
+    /// The mover is the Crown walking into an existing enemy pincer
+    /// (README "Crown" - takes priority over everything else and ends the
+    /// game outright in real play).
+    CrownTrap,
+    /// The mover walks into a pre-existing enemy Spy pincer (README "Spy
+    /// Capture" - applies "even if the enemy moved there").
+    SpyTrap,
+    /// The mover is a Knight whose Knight Capture takes an enemy Knight -
+    /// the sacrifice rule (README "Knight Capture") removes the attacking
+    /// Knight along with its target. A sacrifice waived by the
+    /// `knight_mass_capture` toggle previews as `No`.
+    KnightAttack,
+}
+
 /// What a candidate `from -> to` move would capture, without applying it -
 /// see `CrownfallBoardState::preview_move_captures`.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -608,13 +630,11 @@ pub enum CrownfallTurnResult {
 pub struct MoveCapturePreview {
     /// Enemy pieces this move would remove.
     pub captured: Vec<CrownfallBoardCell>,
-    /// True if the moving piece would itself end up captured - either the
-    /// Crown walking into an existing enemy pincer (README "Crown" - takes
-    /// priority over everything else and ends the game outright in real
-    /// play), or a non-Crown piece walking into a pre-existing enemy Spy
-    /// pincer (README "Spy Capture" - applies "even if the enemy moved
-    /// there"). `captured` never includes the mover's own cell; a non-empty
-    /// `captured` alongside `mover_captured: true` is only possible under
-    /// `CrownfallRuleset::Custom`'s `all_captures_processed` toggle.
-    pub mover_captured: bool,
+    /// Whether - and why - the moving piece would itself end up removed.
+    /// `captured` never includes the mover's own cell. Should several
+    /// reasons apply to one move (possible under `CrownfallRuleset::
+    /// Custom`'s `all_captures_processed` toggle), the highest-priority
+    /// one is reported - `CrownTrap`, then `SpyTrap`, then `KnightAttack`
+    /// - matching the order the apply path resolves them in.
+    pub mover_captured: MoverCaptured,
 }

@@ -245,6 +245,16 @@ fn high_spy_count_prevents_attrition_despite_low_knight_count() {
         CrownfallPieceKind::Knight,
         CrownfallPlayerKind::White,
     ));
+    // Keep White above the threshold too - the sacrifice leaves it at one
+    // knight, and this test is about Black's spy count, not White's loss.
+    board.cells_mut()[42] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[48] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::White,
+    ));
 
     let game = game_with(board);
 
@@ -300,6 +310,49 @@ fn attrition_triggers_once_both_knights_and_spies_are_depleted() {
         game.state,
         CrownfallGameState::Victory(CrownfallPlayerKind::White, WinReason::Attrition),
         "black should lose to attrition once both knight and spy counts are at or below one"
+    );
+}
+
+#[test]
+fn mover_who_sacrifices_into_attrition_loses_immediately() {
+    // White captures Black's knight at (3,3) with a two-knight pincer and
+    // sacrifices one of its own knights to do so, ending the turn with one
+    // knight and no spies - below the attrition threshold. Black keeps a
+    // knight and two spies, so only White is depleted: the loss is declared
+    // on White's own turn rather than deferred until the next removal.
+    let mut board = empty_board();
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[30] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[39] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
+    board.cells_mut()[2] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+
+    let game = game_with(board);
+
+    let (game, _result) = game
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(39),
+            to: CrownfallBoardCell::new_index(32),
+        })
+        .expect("valid move");
+
+    assert_eq!(
+        game.state,
+        CrownfallGameState::Victory(CrownfallPlayerKind::Black, WinReason::Attrition),
+        "white sacrificed its way down to one knight and no spies while black stays above the threshold"
     );
 }
 
@@ -886,8 +939,46 @@ fn preview_reports_an_ordinary_pincer_capture_without_touching_the_board() {
         .expect("legal move");
 
     assert_eq!(preview.captured, vec![CrownfallBoardCell::new_index(24)]);
-    assert!(!preview.mover_captured);
+    assert_eq!(
+        preview.mover_captured,
+        MoverCaptured::KnightAttack,
+        "taking a knight costs the attacking knight its own life"
+    );
     assert_eq!(board, before, "preview must not mutate the board");
+}
+
+#[test]
+fn preview_reports_no_mover_loss_when_the_pincer_takes_a_spy() {
+    // Same geometry as above, but the target is a Spy - the sacrifice rule
+    // only fires when the captured piece is a Knight.
+    let mut board = empty_board();
+    board.cells_mut()[24] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[30] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[39] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+
+    let preview = board
+        .preview_move_captures(
+            CrownfallBoardCell::new_index(39),
+            CrownfallBoardCell::new_index(32),
+            CrownfallRules::standard(),
+        )
+        .expect("legal move");
+
+    assert_eq!(preview.captured, vec![CrownfallBoardCell::new_index(24)]);
+    assert_eq!(
+        preview.mover_captured,
+        MoverCaptured::No,
+        "capturing a spy carries no knight sacrifice"
+    );
 }
 
 #[test]
@@ -916,8 +1007,9 @@ fn preview_reports_the_mover_captured_by_a_pre_existing_spy_pincer() {
         .expect("legal move");
 
     assert!(preview.captured.is_empty());
-    assert!(
+    assert_eq!(
         preview.mover_captured,
+        MoverCaptured::SpyTrap,
         "the moved knight walks into a pre-existing Spy pincer"
     );
 }
@@ -948,8 +1040,9 @@ fn preview_reports_the_crown_captured_by_walking_into_a_pincer() {
         )
         .expect("legal move");
 
-    assert!(
+    assert_eq!(
         preview.mover_captured,
+        MoverCaptured::CrownTrap,
         "the crown walks into a two-spy pincer"
     );
     assert!(
