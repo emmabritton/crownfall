@@ -59,9 +59,14 @@ const REPETITION_LIMIT: usize = 3;
 /// Turns without a capture before the no-progress draw rule fires (chess's
 /// 50-move rule, adapted - Crownfall has no pawn-equivalent, so "no capture"
 /// is the sole progress signal). This is the `Normal` board's value - `Mini`
-/// halves it and `Grand` doubles it (see `CrownfallBoardVariant::no_progress_limit`),
+/// uses 30 and `Grand` doubles it (see `CrownfallBoardVariant::no_progress_limit`),
 /// since a smaller/larger board reaches a stale position proportionally sooner/later.
 const NO_PROGRESS_LIMIT: u16 = 40;
+
+/// `Mini`'s no-progress limit. The proportional value (half of
+/// `NO_PROGRESS_LIMIT`) drew over half of self-play games by no-progress,
+/// so Mini gets a slightly longer leash.
+const MINI_NO_PROGRESS_LIMIT: u16 = 30;
 
 /// Absolute turn-count safety net: the game is drawn if it's still going
 /// after this many turns, regardless of repetition or progress. This is the
@@ -71,11 +76,11 @@ const TOTAL_TURN_LIMIT: u16 = 200;
 
 impl CrownfallBoardVariant {
     /// Turns without a capture before the no-progress draw rule fires,
-    /// scaled to board size - `Mini` at half `NO_PROGRESS_LIMIT`, `Normal`
+    /// scaled to board size - `Mini` at `MINI_NO_PROGRESS_LIMIT`, `Normal`
     /// at the base value, `Grand` at double.
     fn no_progress_limit(self) -> u16 {
         match self {
-            CrownfallBoardVariant::Mini => NO_PROGRESS_LIMIT / 2,
+            CrownfallBoardVariant::Mini => MINI_NO_PROGRESS_LIMIT,
             CrownfallBoardVariant::Normal => NO_PROGRESS_LIMIT,
             CrownfallBoardVariant::Grand => NO_PROGRESS_LIMIT * 2,
         }

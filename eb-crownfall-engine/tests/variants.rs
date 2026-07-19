@@ -134,20 +134,20 @@ fn grand_board_movement_and_capture_still_work() {
 }
 
 // ---------------------------------------------------------------------
-// Board-scaled draw limits (Mini at half, Grand at double the Normal
+// Board-scaled draw limits (Mini at 30/half, Grand at double the Normal
 // board's NO_PROGRESS_LIMIT/TOTAL_TURN_LIMIT)
 // ---------------------------------------------------------------------
 
 #[test]
-fn mini_no_progress_draw_fires_at_half_the_normal_limit() {
+fn mini_no_progress_draw_fires_at_its_reduced_limit() {
     let mut board = CrownfallBoardState::empty(CrownfallBoardVariant::Mini);
     place(&mut board, 0, 0, Spy, White);
     place(&mut board, 4, 4, Spy, Black);
     let mut game = game_with(board, White, CrownfallRules::mini());
-    game.moves_since_capture = 19;
+    game.moves_since_capture = 29;
 
     mv(&mut game, White, (0, 0), (1, 0)).unwrap();
-    assert_eq!(game.moves_since_capture, 20);
+    assert_eq!(game.moves_since_capture, 30);
     assert_eq!(game.state, CrownfallGameState::Draw(DrawReason::NoProgress));
 }
 
@@ -157,10 +157,10 @@ fn mini_no_progress_draw_does_not_fire_early() {
     place(&mut board, 0, 0, Spy, White);
     place(&mut board, 4, 4, Spy, Black);
     let mut game = game_with(board, White, CrownfallRules::mini());
-    game.moves_since_capture = 18;
+    game.moves_since_capture = 28;
 
     mv(&mut game, White, (0, 0), (1, 0)).unwrap();
-    assert_eq!(game.moves_since_capture, 19);
+    assert_eq!(game.moves_since_capture, 29);
     assert!(matches!(game.state, CrownfallGameState::Playing(_)));
 }
 
@@ -218,7 +218,7 @@ fn grand_turn_limit_draw_fires_at_double_the_normal_limit() {
 fn turns_remaining_scales_with_board_variant() {
     let mini = CrownfallGame::new(CrownfallRules::mini());
     assert_eq!(mini.turns_remaining(), 100);
-    assert_eq!(mini.turns_remaining_before_no_progress_draw(), 20);
+    assert_eq!(mini.turns_remaining_before_no_progress_draw(), 30);
 
     let normal = CrownfallGame::new(CrownfallRules::standard());
     assert_eq!(normal.turns_remaining(), 200);

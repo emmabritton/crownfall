@@ -169,7 +169,7 @@ A player loses immediately if either condition is met:
 The game ends in a draw, with no winner, if either condition is met:
 
 1. **Threefold repetition:** The same position (board layout and player to move) occurs three times over the course of the game.
-2. **No progress:** 40 consecutive turns pass without a capture (the equivalent of chess's 50-move rule — Crownfall has no pawn-equivalent, so "no capture" is the sole progress signal). Doubled to 80 turns on the Grand board.
+2. **No progress:** 40 consecutive turns pass without a capture (the equivalent of chess's 50-move rule — Crownfall has no pawn-equivalent, so "no capture" is the sole progress signal). Reduced to 30 turns on the Mini board, doubled to 80 turns on the Grand board.
 3. **Turn limit:** The game reaches 200 total turns. This is an absolute safety net and applies regardless of repetition or recent captures. Doubled to 400 turns on the Grand board.
 
 A Knight Capture that leaves one player with a single Knight and the other with none (which can happen, since the attacker gives up one of their own Knights when the captured piece was a Knight) is not a special case — it's resolved by the normal Attrition and Draw rules above like any other position.
