@@ -59,7 +59,7 @@ fn mv(
     })
 }
 
-use CrownfallPieceKind::{Crown, Knight, Spy};
+use CrownfallPieceKind::{Archer, Crown, Knight, Spy};
 use CrownfallPlayerKind::{Black, White};
 
 // ---------------------------------------------------------------------
@@ -550,8 +550,8 @@ fn spy_capture_of_a_knight() {
 }
 
 /// Two Spies orthogonally adjacent to the Crown are just as valid a
-/// crown-capturing pair as two Knights (README: "surrounded by two enemy
-/// Spies, by two enemy Knights, or by an enemy Knight and Crown").
+/// crown-capturing pair as two Knights (README: "surrounded by any two
+/// enemy pieces other than Archers").
 #[test]
 fn crown_capture_via_two_spies() {
     let mut board = empty_board();
@@ -639,12 +639,112 @@ fn crown_capture_invalid_when_diagonal_knight_did_not_just_move() {
     );
 }
 
-/// A Spy + Knight pair is not a valid Crown-capturing combination.
+/// Against the Crown, any two non-Archer attackers form a valid pair - here a
+/// Knight moving in beside a pre-placed Spy.
 #[test]
-fn crown_capture_invalid_for_spy_and_knight_pair() {
+fn crown_capture_via_spy_and_moved_knight() {
     let mut board = empty_board();
     place(&mut board, 3, 3, Crown, Black); // target
     place(&mut board, 3, 2, Spy, White); // pre-placed, orthogonal
+    place(&mut board, 2, 4, Knight, White); // will move to (2,3), orthogonal
+    let mut game = game_with(board, White);
+
+    let result = mv(&mut game, White, (2, 4), (2, 3)).unwrap();
+    assert!(matches!(
+        result,
+        Some(CrownfallTurnResult::Victory { player: White, .. })
+    ));
+    assert_eq!(piece_at(&game.board, 3, 3), None);
+    assert_eq!(
+        game.state,
+        CrownfallGameState::Victory(White, WinReason::CrownCaptured)
+    );
+}
+
+/// The Knight+Spy pair works with either piece initiating - here the Spy is
+/// the one that moves.
+#[test]
+fn crown_capture_via_knight_and_moved_spy() {
+    let mut board = empty_board();
+    place(&mut board, 3, 3, Crown, Black); // target
+    place(&mut board, 3, 4, Knight, White); // pre-placed, orthogonal
+    place(&mut board, 2, 2, Spy, White); // will move to (2,3), orthogonal
+    let mut game = game_with(board, White);
+
+    let result = mv(&mut game, White, (2, 2), (2, 3)).unwrap();
+    assert!(matches!(
+        result,
+        Some(CrownfallTurnResult::Victory { player: White, .. })
+    ));
+    assert_eq!(piece_at(&game.board, 3, 3), None);
+}
+
+/// A Knight that just moved diagonally ahead of the Crown can pair with an
+/// orthogonal Spy, not only another Knight.
+#[test]
+fn crown_capture_via_ortho_spy_plus_moved_diagonal_knight() {
+    let mut board = empty_board();
+    place(&mut board, 3, 3, Crown, Black); // target
+    place(&mut board, 3, 2, Spy, White); // orthogonal, pre-placed
+    place(&mut board, 2, 5, Knight, White); // will move to (2,4), diagonally ahead
+    let mut game = game_with(board, White);
+
+    let result = mv(&mut game, White, (2, 5), (2, 4)).unwrap();
+    assert!(matches!(
+        result,
+        Some(CrownfallTurnResult::Victory { player: White, .. })
+    ));
+    assert_eq!(piece_at(&game.board, 3, 3), None);
+}
+
+/// The attacker's own Crown can pair with a Spy against the enemy Crown -
+/// here the Spy moves to complete the surround.
+#[test]
+fn crown_capture_via_crown_and_moved_spy() {
+    let mut board = empty_board();
+    place(&mut board, 3, 3, Crown, Black); // target
+    place(&mut board, 4, 3, Crown, White); // pre-placed, orthogonal
+    place(&mut board, 2, 2, Spy, White); // will move to (2,3), orthogonal
+    let mut game = game_with(board, White);
+
+    let result = mv(&mut game, White, (2, 2), (2, 3)).unwrap();
+    assert!(matches!(
+        result,
+        Some(CrownfallTurnResult::Victory { player: White, .. })
+    ));
+    assert_eq!(piece_at(&game.board, 3, 3), None);
+}
+
+/// A Spy+Crown surround also completes when the Crown itself is the piece
+/// that moves - surrounding the enemy Crown is exempt from the "Crown never
+/// initiates a capture" rule.
+#[test]
+fn crown_capture_via_spy_and_moved_crown() {
+    let mut board = empty_board();
+    place(&mut board, 3, 3, Crown, Black); // target
+    place(&mut board, 3, 2, Spy, White); // pre-placed, orthogonal
+    place(&mut board, 4, 4, Crown, White); // will move to (4,3), orthogonal
+    let mut game = game_with(board, White);
+
+    let result = mv(&mut game, White, (4, 4), (4, 3)).unwrap();
+    assert!(matches!(
+        result,
+        Some(CrownfallTurnResult::Victory { player: White, .. })
+    ));
+    assert_eq!(piece_at(&game.board, 3, 3), None);
+    assert_eq!(
+        game.state,
+        CrownfallGameState::Victory(White, WinReason::CrownCaptured)
+    );
+}
+
+/// Archers still never count toward a Crown surround - an Archer beside the
+/// Crown plus a moved Knight is only one valid attacker.
+#[test]
+fn crown_capture_invalid_for_archer_and_knight_pair() {
+    let mut board = empty_board();
+    place(&mut board, 3, 3, Crown, Black); // target
+    place(&mut board, 3, 2, Archer, White); // pre-placed, orthogonal, never a valid attacker
     place(&mut board, 2, 4, Knight, White); // will move to (2,3), orthogonal
     let mut game = game_with(board, White);
 
@@ -656,6 +756,28 @@ fn crown_capture_invalid_for_spy_and_knight_pair() {
     assert_eq!(
         piece_at(&game.board, 3, 3),
         Some(CrownfallPiece::new(Crown, Black))
+    );
+}
+
+/// The widened pair rule is crown-specific: Knight+Spy still does not
+/// capture an ordinary piece.
+#[test]
+fn knight_and_spy_pair_does_not_capture_an_ordinary_piece() {
+    let mut board = empty_board();
+    place(&mut board, 3, 3, Knight, Black); // target (not a Crown)
+    place(&mut board, 3, 2, Knight, White); // pre-placed directly ahead - valid arc position
+    place(&mut board, 2, 2, Spy, White); // will move to (2,3), orthogonal
+    let mut game = game_with(board, White);
+
+    let result = mv(&mut game, White, (2, 2), (2, 3)).unwrap();
+    assert!(matches!(
+        result,
+        Some(CrownfallTurnResult::PieceMove { .. })
+    ));
+    assert_eq!(
+        piece_at(&game.board, 3, 3),
+        Some(CrownfallPiece::new(Knight, Black)),
+        "Knight+Spy is only a valid pair against the Crown"
     );
 }
 
@@ -772,7 +894,7 @@ fn enemy_spy_trap_takes_priority_over_the_movers_own_capture() {
 fn attrition_defeat_when_knights_and_spies_both_exhausted() {
     let mut board = empty_board();
     place(&mut board, 3, 3, Knight, Black); // black's only knight
-    place(&mut board, 6, 6, Spy, Black); // black's only spy - stays at <=1 after capture
+    place(&mut board, 6, 6, Spy, Black); // black's only spy - 0 knights + 1 spy is at the combined threshold
     place(&mut board, 3, 4, Spy, White);
     place(&mut board, 2, 2, Spy, White); // will move to (2,3)
     let mut game = game_with(board, White);
@@ -806,6 +928,27 @@ fn no_attrition_defeat_while_above_the_threshold() {
     assert!(
         matches!(game.state, CrownfallGameState::Playing(_)),
         "black still has 2 knights + 2 spies"
+    );
+}
+
+/// The attrition threshold is one-or-fewer Knights and Spies *combined* -
+/// 1 Knight + 1 Spy is two capture-capable pieces (either can pair against
+/// the enemy Crown), so it is not a loss.
+#[test]
+fn no_attrition_defeat_with_one_knight_and_one_spy() {
+    let mut board = empty_board();
+    place(&mut board, 3, 3, Knight, Black); // captured this turn
+    place(&mut board, 1, 1, Knight, Black); // black keeps this knight...
+    place(&mut board, 6, 6, Spy, Black); // ...and this spy: 1 + 1 survives
+    place(&mut board, 3, 4, Spy, White);
+    place(&mut board, 2, 2, Spy, White); // will move to (2,3)
+    let mut game = game_with(board, White);
+
+    mv(&mut game, White, (2, 2), (2, 3)).unwrap();
+    assert_eq!(piece_at(&game.board, 3, 3), None, "target captured");
+    assert!(
+        matches!(game.state, CrownfallGameState::Playing(_)),
+        "1 knight + 1 spy is above the combined threshold"
     );
 }
 

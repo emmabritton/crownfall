@@ -266,12 +266,11 @@ fn archer_ranged_capture_with_orthogonally_adjacent_ally() {
     );
 }
 
-/// Attrition (one-or-fewer Knights and Spies) is ignored under the Archers
-/// ruleset: an Archer-owning side can still capture with none of either
-/// left, so losing your last Knight while Archers remain must not end the
-/// game.
+/// Attrition applies on the Grand board too: Archers don't count toward the
+/// Knight+Spy total, so a side reduced to Archers alone loses by attrition
+/// even though its ranged shot could still capture.
 #[test]
-fn attrition_is_ignored_when_archers_remain() {
+fn attrition_fires_even_when_archers_remain() {
     let mut board = CrownfallBoardState::empty(CrownfallBoardVariant::Grand);
     place(&mut board, 3, 3, Knight, Black); // black's only knight, about to be captured
     place(&mut board, 7, 7, Archer, Black);
@@ -280,19 +279,40 @@ fn attrition_is_ignored_when_archers_remain() {
     place(&mut board, 2, 2, Spy, White); // will move to (2,3)
     let mut game = game_with(board, White, CrownfallRules::grand());
 
-    let result = mv(&mut game, White, (2, 2), (2, 3)).unwrap();
-    assert!(matches!(
-        result,
-        Some(CrownfallTurnResult::Capture { player: White, .. })
-    ));
+    mv(&mut game, White, (2, 2), (2, 3)).unwrap();
     assert_eq!(
         piece_at(&game.board, 3, 3),
         None,
         "black's last knight captured"
     );
+    assert_eq!(
+        game.state,
+        CrownfallGameState::Victory(White, WinReason::Attrition),
+        "black's 2 archers don't count toward attrition"
+    );
+}
+
+/// The all-Archer *ruleset* is exempt from attrition: its armies field a
+/// single Spy by design (0 Knights), so the combined one-or-fewer threshold
+/// would otherwise end those games on the first capture.
+#[test]
+fn attrition_is_disabled_under_the_archers_ruleset() {
+    let mut board = CrownfallBoardState::empty(CrownfallBoardVariant::Grand);
+    place(&mut board, 3, 3, Archer, Black); // captured by white's archer shot
+    place(&mut board, 7, 7, Spy, Black); // black's only non-archer piece
+    place(&mut board, 3, 4, Spy, White); // ally adjacent to the target
+    place(&mut board, 4, 5, Archer, White); // will move to (3,5), 2 tiles from target
+    let mut game = game_with(board, White, CrownfallRules::grand_archers());
+
+    let result = mv(&mut game, White, (4, 5), (3, 5)).unwrap();
+    assert!(matches!(
+        result,
+        Some(CrownfallTurnResult::Capture { player: White, .. })
+    ));
+    assert_eq!(piece_at(&game.board, 3, 3), None, "black archer shot");
     assert!(
         matches!(game.state, CrownfallGameState::Playing(_)),
-        "black has 0 knights and 0 spies, but 2 archers still in play - not an attrition loss"
+        "both sides are at 1 spy + 0 knights, but the Archers ruleset never loses by attrition"
     );
 }
 

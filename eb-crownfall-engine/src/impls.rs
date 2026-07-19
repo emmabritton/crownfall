@@ -275,13 +275,16 @@ impl PieceCache {
         self.crowns[player as usize]
     }
 
-    /// A player is only out of the fight once both their Knights and Spies
-    /// are depleted - Spy Capture works independently of Knights, so
-    /// holding spies alone is still a real offensive threat (README "Losing
-    /// the Game" - Attrition). Archers don't factor into attrition.
+    /// A player is out of the fight once their Knights and Spies *combined*
+    /// are down to one piece or fewer - a lone Knight or lone Spy can never
+    /// pincer on its own, but any two (1 Knight + 1 Spy included, since
+    /// either can pair against the enemy Crown) remain a real threat
+    /// (README "Losing the Game" - Attrition). Archers don't factor into
+    /// attrition at all, on either side of the count.
     fn attrition_defeated(&self, player: CrownfallPlayerKind) -> bool {
-        self.count(CrownfallPieceKind::Knight, player) <= 1
-            && self.count(CrownfallPieceKind::Spy, player) <= 1
+        self.count(CrownfallPieceKind::Knight, player)
+            + self.count(CrownfallPieceKind::Spy, player)
+            <= 1
     }
 }
 
@@ -1128,7 +1131,9 @@ impl CrownfallBoardState {
         self.first_capturing_pair(&attackers[..len])
     }
 
-    /// Determines which capture rule (if any) the attacking pair satisfies.
+    /// Determines which capture rule (if any) the attacking pair satisfies, for
+    /// ordinary (non-Crown-target) captures only - crown surrounds accept any
+    /// non-Archer pair instead (see `find_crown_attacking_pair`).
     ///
     /// The Crown may only stand in for a Knight, never a Spy (README "Crown" section),
     /// so a Crown+Spy pair does not form a valid capture. Archers never form a valid
@@ -1153,7 +1158,10 @@ impl CrownfallBoardState {
     /// `attacker`-owned pieces. Any of the Crown's orthogonally adjacent tiles counts
     /// unconditionally (any side, whether that piece just moved or was already in
     /// place) - Crown captures are not bound by the Knight capture-shape restriction the
-    /// way ordinary Knight Captures are. However, a Knight can *also* attack from the
+    /// way ordinary Knight Captures are, and unlike ordinary captures *any two*
+    /// non-Archer attackers form a valid pair (Spy+Spy, Knight+Knight, Knight+Spy,
+    /// Knight+Crown, or Spy+Crown - the `capture_kind` pair rules don't apply here).
+    /// However, a Knight can *also* attack from the
     /// exposed subset of its capture shape (outside plain orthogonal adjacency) if -
     /// and only if - `moved` is that Knight: that reach only activates for the
     /// Knight that's actively moving into it this turn, never for one that was
@@ -1170,7 +1178,7 @@ impl CrownfallBoardState {
         let mut attackers = [0u8; 5];
         let mut len = 0;
         for &neighbour in tables::ortho(variant, target.to_index()) {
-            if matches!(self.cells()[neighbour as usize], Some(piece) if piece.player() == attacker)
+            if matches!(self.cells()[neighbour as usize], Some(piece) if piece.player() == attacker && piece.kind() != CrownfallPieceKind::Archer)
             {
                 attackers[len] = neighbour;
                 len += 1;
@@ -1184,7 +1192,24 @@ impl CrownfallBoardState {
             len += 1;
         }
 
-        self.first_capturing_pair(&attackers[..len])
+        // Every collected attacker is a valid surround piece, so the first two
+        // complete the capture - no `capture_kind` pair filtering.
+        if len < 2 {
+            return None;
+        }
+        let pair = (
+            CrownfallBoardCell::new_index(attackers[0] as usize),
+            CrownfallBoardCell::new_index(attackers[1] as usize),
+        );
+        let involves_knight = [pair.0, pair.1].iter().any(|cell| {
+            matches!(self.cells()[cell.to_index()], Some(piece) if piece.kind() == CrownfallPieceKind::Knight)
+        });
+        let kind = if involves_knight {
+            CaptureKind::Knight
+        } else {
+            CaptureKind::Spy
+        };
+        Some((pair, kind))
     }
 
     /// The attacker's own piece other than `moved` in an attacking pair.
@@ -2055,10 +2080,14 @@ impl CrownfallGame {
     /// mover, whose own Knight sacrifice or walk into a Spy pincer can
     /// drop them below the threshold on their own turn.
     ///
-    /// Attrition is skipped entirely under the `Archers` ruleset: it only
-    /// counts Knights and Spies, but an Archer-owning side can still capture
-    /// (its ranged shot) with none of either left, so being reduced to
-    /// Archers alone must not be treated as a loss.
+    /// Attrition applies on every *board*, Grand included: Archers simply
+    /// don't count toward the Knight+Spy total, so a side reduced to
+    /// Archers plus at most one Knight/Spy loses by attrition even though
+    /// its ranged shot could still capture. Only the all-Archer `Archers`
+    /// *ruleset* is exempt - its armies field a single Spy by design, so
+    /// the combined threshold would otherwise end those games on first
+    /// blood. (Keying this off the ruleset, not `has_archers()`'s
+    /// board-based check, is deliberate.)
     fn resolve_after_removal(
         &mut self,
         player: CrownfallPlayerKind,
@@ -2069,9 +2098,10 @@ impl CrownfallGame {
             self.cache.valid,
             "the apply path runs behind ensure_cache, so the counts are current"
         );
-        if !self.rules.has_archers() && self.cache.attrition_defeated(player.opposite()) {
+        let attrition_enabled = !matches!(self.rules.ruleset, CrownfallRuleset::Archers);
+        if attrition_enabled && self.cache.attrition_defeated(player.opposite()) {
             CrownfallGameState::Victory(player, WinReason::Attrition)
-        } else if !self.rules.has_archers() && self.cache.attrition_defeated(player) {
+        } else if attrition_enabled && self.cache.attrition_defeated(player) {
             // The mover can deplete *themselves* below the threshold too - a
             // Knight sacrifice, or walking into an enemy Spy pincer. That
             // loss is declared now, not deferred to the next removal; the
