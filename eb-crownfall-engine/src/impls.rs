@@ -282,8 +282,7 @@ impl PieceCache {
     /// (README "Losing the Game" - Attrition). Archers don't factor into
     /// attrition at all, on either side of the count.
     fn attrition_defeated(&self, player: CrownfallPlayerKind) -> bool {
-        self.count(CrownfallPieceKind::Knight, player)
-            + self.count(CrownfallPieceKind::Spy, player)
+        self.count(CrownfallPieceKind::Knight, player) + self.count(CrownfallPieceKind::Spy, player)
             <= 1
     }
 }

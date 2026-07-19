@@ -449,11 +449,7 @@ fn crown_partnered_knight_capture_sacrifices_the_knight_not_the_crown() {
 
     mv(&mut game, White, (4, 5), (4, 4)).unwrap();
     assert_eq!(piece_at(&game.board, 3, 3), None, "target captured");
-    assert_eq!(
-        piece_at(&game.board, 4, 4),
-        None,
-        "moved knight sacrificed"
-    );
+    assert_eq!(piece_at(&game.board, 4, 4), None, "moved knight sacrificed");
     assert_eq!(
         piece_at(&game.board, 2, 3),
         Some(CrownfallPiece::new(Crown, White)),
