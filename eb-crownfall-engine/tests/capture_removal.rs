@@ -1085,3 +1085,219 @@ fn preview_is_none_for_an_illegal_destination() {
             .is_none()
     );
 }
+
+#[test]
+fn stale_knight_pincer_is_not_sprung_by_an_unrelated_adjacent_move() {
+    // Regression: two stationary White Knights at (4,4)=32 and (5,4)=33 hold a
+    // pincer over (4,3)=25 that the Black Knight safely walked into on an
+    // earlier turn (Knight pincers don't trap walk-ins). A White Spy then
+    // moving to the adjacent (3,3)=24 must NOT spring that stale pincer - the
+    // capturing pair has to include the piece that just moved. Before the fix
+    // this fired the capture AND removed the Spy as the "sacrificed Knight".
+    let mut board = empty_board();
+    board.cells_mut()[25] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[32] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[33] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[31] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::White,
+    ));
+    pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
+
+    let game = game_with(board);
+
+    let (game, result) = game
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(31),
+            to: CrownfallBoardCell::new_index(24),
+        })
+        .expect("valid move");
+
+    assert!(
+        matches!(result, Some(CrownfallTurnResult::PieceMove { .. })),
+        "an adjacent Spy move must not spring a pincer it is not part of, got {result:?}"
+    );
+    assert!(
+        matches!(
+            game.board.cells()[25],
+            Some(piece) if piece.kind() == CrownfallPieceKind::Knight
+                && piece.player() == CrownfallPlayerKind::Black
+        ),
+        "the Black Knight sitting in the stale pincer must survive"
+    );
+    assert!(
+        matches!(
+            game.board.cells()[24],
+            Some(piece) if piece.kind() == CrownfallPieceKind::Spy
+                && piece.player() == CrownfallPlayerKind::White
+        ),
+        "the moved White Spy must not be removed as a phantom Knight sacrifice"
+    );
+}
+
+#[test]
+fn spy_trap_fires_even_when_other_enemy_pieces_are_also_adjacent() {
+    // Regression: the walk-in Spy trap must look specifically for a Spy pair.
+    // Black Spies at (2,3)=23 and (4,3)=25 trap (3,3)=24, but a Black Crown at
+    // (3,2)=17 (first in ortho enumeration order) plus an arc-placed Black
+    // Knight at (2,2)=16 used to be found first as an inert Crown+Knight pair,
+    // masking the trap.
+    let mut board = empty_board();
+    board.cells_mut()[23] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[25] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[17] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Crown,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[16] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[31] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::White,
+    ));
+    pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::White);
+
+    let game = game_with(board);
+
+    let (game, result) = game
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(31),
+            to: CrownfallBoardCell::new_index(24),
+        })
+        .expect("valid move");
+
+    assert!(
+        game.board.cells()[24].is_none(),
+        "the White Spy walked into a Black Spy pair and must be captured"
+    );
+    match result {
+        Some(CrownfallTurnResult::Capture {
+            removed,
+            second_attacker,
+            ..
+        }) => {
+            assert_eq!(removed, CrownfallBoardCell::new_index(24));
+            assert!(
+                [23, 25].contains(&second_attacker.to_index()),
+                "the reported attacker must be one of the trapping Spies, got {second_attacker:?}"
+            );
+        }
+        other => panic!("expected a spy-trap capture, got {other:?}"),
+    }
+}
+
+#[test]
+fn moved_knight_still_captures_with_extra_stationary_knights_in_the_arc() {
+    // Guard against the mover-must-be-in-the-pair restriction over-firing:
+    // with stationary White Knights at (4,4)=32 and (5,4)=33 already in the
+    // arc over (4,3)=25, a White Knight moving to the exposed (3,4)=31 spot
+    // genuinely completes a pincer and must still capture - and the sacrifice
+    // must fall on the moved Knight, not a stationary partner.
+    let mut board = empty_board();
+    board.cells_mut()[25] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[32] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[33] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[30] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    pad_board_to_avoid_attrition(&mut board, CrownfallPlayerKind::Black);
+
+    let game = game_with(board);
+
+    let (game, result) = game
+        .handle_player_action(CrownfallPlayerAction::Move {
+            player: CrownfallPlayerKind::White,
+            from: CrownfallBoardCell::new_index(30),
+            to: CrownfallBoardCell::new_index(31),
+        })
+        .expect("valid move");
+
+    assert!(
+        matches!(result, Some(CrownfallTurnResult::Capture { .. })),
+        "a pincer completed by the mover must still fire, got {result:?}"
+    );
+    assert!(
+        game.board.cells()[25].is_none(),
+        "the pincered Black Knight is captured"
+    );
+    assert!(
+        game.board.cells()[31].is_none(),
+        "the moved Knight pays the sacrifice"
+    );
+    assert!(
+        game.board.cells()[32].is_some() && game.board.cells()[33].is_some(),
+        "stationary partner Knights are never the sacrifice"
+    );
+}
+
+#[test]
+fn preview_shows_no_captures_for_a_move_adjacent_to_a_stale_pincer() {
+    // Preview parity for the stale-pincer fix: the client's capture preview
+    // must agree that a Spy moving beside a Black Knight held by two
+    // stationary White Knights captures nothing and loses nothing.
+    let mut board = empty_board();
+    board.cells_mut()[25] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::Black,
+    ));
+    board.cells_mut()[32] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[33] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Knight,
+        CrownfallPlayerKind::White,
+    ));
+    board.cells_mut()[31] = Some(CrownfallPiece::new(
+        CrownfallPieceKind::Spy,
+        CrownfallPlayerKind::White,
+    ));
+
+    let preview = board
+        .preview_move_captures(
+            CrownfallBoardCell::new_index(31),
+            CrownfallBoardCell::new_index(24),
+            CrownfallRules::standard(),
+        )
+        .expect("legal move");
+
+    assert!(
+        preview.captured.is_empty(),
+        "no capture may be previewed, got {:?}",
+        preview.captured
+    );
+    assert_eq!(
+        preview.mover_captured,
+        MoverCaptured::No,
+        "the moved Spy is not a phantom Knight sacrifice"
+    );
+}

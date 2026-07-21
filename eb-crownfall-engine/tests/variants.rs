@@ -452,6 +452,33 @@ fn mandatory_capture_allows_ordinary_moves_when_none_are_available() {
     ));
 }
 
+/// A stale pincer - two stationary White Knights holding the arc over a Black
+/// Knight that safely walked in - is not an "available capture", so it must
+/// not force the mandatory-capture rule: the probe (`has_available_capture`)
+/// has to apply the same mover-must-complete-the-pincer restriction as a real
+/// move. Before that restriction, White's only Spy move adjacent to the
+/// target counted as a capture and every ordinary move was rejected.
+#[test]
+fn mandatory_capture_ignores_stale_pincers_when_probing_for_available_captures() {
+    let mut board = CrownfallBoardState::empty(CrownfallBoardVariant::Normal);
+    place(&mut board, 4, 3, Knight, Black); // walked into the arc earlier
+    place(&mut board, 4, 4, Knight, White); // stationary, straight ahead
+    place(&mut board, 5, 4, Knight, White); // stationary, diagonally ahead
+    place(&mut board, 3, 4, Spy, White); // its move to (3,3) springs nothing
+    let mut game = game_with(board, White, CrownfallRules::standard_mandatory_capture());
+
+    let result = mv(&mut game, White, (3, 4), (2, 4)).unwrap();
+    assert!(
+        matches!(result, Some(CrownfallTurnResult::PieceMove { .. })),
+        "no genuine capture exists, so an ordinary move must be allowed"
+    );
+    assert_eq!(
+        piece_at(&game.board, 4, 3),
+        Some(CrownfallPiece::new(Knight, Black)),
+        "the stale pincer never fires"
+    );
+}
+
 // ---------------------------------------------------------------------
 // All-captures-processed
 // ---------------------------------------------------------------------

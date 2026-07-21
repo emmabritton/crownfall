@@ -943,7 +943,7 @@ impl CrownfallBoardState {
             }
         }
 
-        if scratch.check_self_spy_trap(to, player, rules) {
+        if scratch.check_self_spy_trap(to, player).is_some() {
             preview.mover_captured = MoverCaptured::SpyTrap;
             if !all_captures_processed_enabled {
                 return Some(preview);
@@ -1082,9 +1082,14 @@ impl CrownfallBoardState {
     fn first_capturing_pair(
         &self,
         attackers: &[u8],
+        moved: CrownfallBoardCell,
     ) -> Option<((CrownfallBoardCell, CrownfallBoardCell), CaptureKind)> {
+        let moved_index = moved.to_index() as u8;
         for i in 0..attackers.len() {
             for j in (i + 1)..attackers.len() {
+                if attackers[i] != moved_index && attackers[j] != moved_index {
+                    continue;
+                }
                 let pair = (
                     CrownfallBoardCell::new_index(attackers[i] as usize),
                     CrownfallBoardCell::new_index(attackers[j] as usize),
@@ -1097,21 +1102,27 @@ impl CrownfallBoardState {
         None
     }
 
-    /// Finds a valid capturing pincer against `target` occupied by `attacker`-owned
-    /// pieces. Crown and Spy attackers only need plain orthogonal adjacency (any of
-    /// the 4 sides); Knight attackers additionally need `target` to fall within their
-    /// own capture shape (see `knight_capture_shape`) - a Knight standing outside that
-    /// shape cannot form a Knight Capture pincer. Whether the just-moved piece
-    /// specifically must land in the shape's exposed subset (not just anywhere in it)
-    /// is enforced by callers via `is_capture_landing_spot_of`, not here - this only
-    /// finds *some* valid pair. Archers are never valid attackers here (see
-    /// `capture_kind` - no pair including an Archer ever matches). Extra
-    /// attacker-owned pieces also adjacent to `target` (of any kind) must not block a
-    /// genuine pincer formed by two others.
+    /// Finds a valid capturing pincer against `target` that includes the piece that
+    /// just moved to `moved` - only the mover can spring a capture, so a stale pincer
+    /// formed by two stationary pieces (e.g. one the target safely walked into on an
+    /// earlier turn) never fires from an unrelated move that merely lands nearby.
+    /// (The one capture by pre-existing attackers, the walk-in Spy trap, is handled
+    /// separately by `check_self_spy_trap`.) Crown and Spy attackers only need plain
+    /// orthogonal adjacency (any of the 4 sides); Knight attackers additionally need
+    /// `target` to fall within their own capture shape (see `knight_capture_shape`) -
+    /// a Knight standing outside that shape cannot form a Knight Capture pincer.
+    /// Whether the just-moved piece specifically must land in the shape's exposed
+    /// subset (not just anywhere in it) is enforced by callers via
+    /// `is_capture_landing_spot_of`, not here - this only finds *some* valid pair
+    /// containing `moved`. Archers are never valid attackers here (see `capture_kind`
+    /// - no pair including an Archer ever matches). Extra attacker-owned pieces also
+    /// adjacent to `target` (of any kind) must not block a genuine pincer formed by
+    /// the mover and one other.
     fn find_attacking_pair(
         &self,
         target: CrownfallBoardCell,
         attacker: CrownfallPlayerKind,
+        moved: CrownfallBoardCell,
         rules: CrownfallRules,
     ) -> Option<((CrownfallBoardCell, CrownfallBoardCell), CaptureKind)> {
         let variant = self.variant();
@@ -1132,7 +1143,7 @@ impl CrownfallBoardState {
                 len += 1;
             }
         }
-        self.first_capturing_pair(&attackers[..len])
+        self.first_capturing_pair(&attackers[..len], moved)
     }
 
     /// Determines which capture rule (if any) the attacking pair satisfies, for
@@ -1228,23 +1239,36 @@ impl CrownfallBoardState {
         }
     }
 
-    /// True if the piece just moved to `at` (owned by `mover`) is captured by a
-    /// pre-existing enemy Spy pair - the Spy Capture rule applies "even if the enemy
-    /// moved there" (README "Spy Capture"). The Crown is exempt: its own capture is
-    /// governed exclusively by the higher-priority crown-loss check.
+    /// If the piece just moved to `at` (owned by `mover`) is captured by a
+    /// pre-existing enemy Spy pair, returns that pair - the Spy Capture rule applies
+    /// "even if the enemy moved there" (README "Spy Capture"). Looks specifically for
+    /// two enemy Spies orthogonally adjacent to `at` (any two sides), so other
+    /// adjacent enemy pieces - say a Crown plus an arc-placed Knight, whose inert
+    /// pair would otherwise be found first - can never mask the trap. The Crown is
+    /// exempt: its own capture is governed exclusively by the higher-priority
+    /// crown-loss check.
     fn check_self_spy_trap(
         &self,
         at: CrownfallBoardCell,
         mover: CrownfallPlayerKind,
-        rules: CrownfallRules,
-    ) -> bool {
+    ) -> Option<(CrownfallBoardCell, CrownfallBoardCell)> {
         match self.cells()[at.to_index()] {
             Some(piece) if piece.player() == mover && piece.kind() != CrownfallPieceKind::Crown => {
-                self.find_attacking_pair(at, mover.opposite(), rules)
-                    .map(|(_, kind)| kind)
-                    == Some(CaptureKind::Spy)
+                let attacker = mover.opposite();
+                let mut first = None;
+                for &neighbour in tables::ortho(self.variant(), at.to_index()) {
+                    if matches!(self.cells()[neighbour as usize], Some(candidate) if candidate.player() == attacker && candidate.kind() == CrownfallPieceKind::Spy)
+                    {
+                        let cell = CrownfallBoardCell::new_index(neighbour as usize);
+                        match first {
+                            None => first = Some(cell),
+                            Some(other) => return Some((other, cell)),
+                        }
+                    }
+                }
+                None
             }
-            _ => false,
+            _ => None,
         }
     }
 
@@ -1383,7 +1407,8 @@ impl CrownfallBoardState {
             if !self.moved_knight_completes_pincer(to, target, attacker, rules) {
                 continue;
             }
-            let Some((attackers, kind)) = self.find_attacking_pair(target, attacker, rules) else {
+            let Some((attackers, kind)) = self.find_attacking_pair(target, attacker, to, rules)
+            else {
                 continue;
             };
             captures[count] = PieceCapture {
@@ -1762,7 +1787,7 @@ impl CrownfallGame {
 
         // Spy Capture applies "even if the enemy moved there" - the piece just moved
         // can walk straight into a pre-existing enemy Spy pincer and be captured by it.
-        if self.board.check_self_spy_trap(to, player, self.rules) {
+        if let Some(attackers) = self.board.check_self_spy_trap(to, player) {
             self.take_cell(to_index, scratch);
             #[cfg(feature = "log")]
             if log_moves {
@@ -1772,17 +1797,13 @@ impl CrownfallGame {
                     LogCoord(to, self.rules.board)
                 );
             }
-            let attackers = self
-                .board
-                .find_attacking_pair(to, player.opposite(), self.rules)
-                .expect("check_self_spy_trap confirmed an attacking pair");
             self.state = self.resolve_after_removal(player, true, scratch.hash_delta);
             return Ok(Some(CrownfallTurnResult::Capture {
                 player,
                 last_move_from: from,
                 last_move_to: to,
                 removed: to,
-                second_attacker: attackers.0.1,
+                second_attacker: attackers.1,
             }));
         }
 
@@ -1857,7 +1878,7 @@ impl CrownfallGame {
         let snapshot = self.board;
 
         let crown_capture = snapshot.check_crown_capture(to, player, self.rules);
-        let self_trapped = snapshot.check_self_spy_trap(to, player, self.rules);
+        let self_trapped = snapshot.check_self_spy_trap(to, player);
         let (captures, capture_count) = snapshot.check_piece_captures(to, player, self.rules);
         let (archer_captures, archer_count) = if piece.kind() == CrownfallPieceKind::Archer {
             snapshot.check_archer_capture(to, player)
@@ -1891,7 +1912,7 @@ impl CrownfallGame {
             });
         }
 
-        if self_trapped {
+        if let Some(attackers) = self_trapped {
             self.take_cell(to_index, scratch);
             #[cfg(feature = "log")]
             if log_moves {
@@ -1901,16 +1922,13 @@ impl CrownfallGame {
                     LogCoord(to, self.rules.board)
                 );
             }
-            let attackers = snapshot
-                .find_attacking_pair(to, player.opposite(), self.rules)
-                .expect("check_self_spy_trap confirmed an attacking pair");
             any_capture = true;
             turn_result.get_or_insert(CrownfallTurnResult::Capture {
                 player,
                 last_move_from: from,
                 last_move_to: to,
                 removed: to,
-                second_attacker: attackers.0.1,
+                second_attacker: attackers.1,
             });
         }
 
