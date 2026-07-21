@@ -1116,8 +1116,8 @@ impl CrownfallBoardState {
     /// `is_capture_landing_spot_of`, not here - this only finds *some* valid pair
     /// containing `moved`. Archers are never valid attackers here (see `capture_kind`
     /// - no pair including an Archer ever matches). Extra attacker-owned pieces also
-    /// adjacent to `target` (of any kind) must not block a genuine pincer formed by
-    /// the mover and one other.
+    ///   adjacent to `target` (of any kind) must not block a genuine pincer formed by
+    ///   the mover and one other.
     fn find_attacking_pair(
         &self,
         target: CrownfallBoardCell,
